@@ -18,6 +18,7 @@ publish/
 node_modules/
 dist/
 .vite/
+package-lock.json
 
 # Tauri
 src-tauri/target/
@@ -33,4 +34,8 @@ src-tauri/target/release/bundle/
 .idea/
 *.swp
 *.swo
+
+# ZCode 工作目录（含本机路径和评审 diff）
+.zcode/
+.superpowers/
 

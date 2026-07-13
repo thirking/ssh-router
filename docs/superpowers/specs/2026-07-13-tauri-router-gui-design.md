@@ -85,8 +85,8 @@ ssh-router.exe (托盘 GUI) ←→ ssh-router.json ←→ ssh-router-cli.exe
       "port": 2223,
       "name": "WSL Ubuntu",
       "shell": "wsl.exe",
-      "interactiveTemplate": "wsl.exe -d Ubuntu -- bash -lc 'cd /home/thirking && exec bash -l'",
-      "commandTemplate": "wsl.exe -d Ubuntu -- bash -c 'cd /home/thirking && . \"{tmpfile_wsl}\"'",
+      "interactiveTemplate": "wsl.exe -d Ubuntu -- bash -lc 'cd ~ && exec bash -l'",
+      "commandTemplate": "wsl.exe -d Ubuntu -- bash -c 'cd ~ && . \"{tmpfile_wsl}\"'",
       "tmpFileExt": ".sh",
       "default": false
     }
