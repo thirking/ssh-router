@@ -12,3 +12,15 @@ publish/
 
 # Rust 构建产物
 /target
+
+# Node.js
+node_modules/
+dist/
+
+# Tauri
+src-tauri/target/
+src-tauri/gen/
+
+# macOS
+.DS_Store
+
