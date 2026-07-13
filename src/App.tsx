@@ -88,12 +88,15 @@ function App() {
 
   if (!config) {
     return (
-      <div className="flex items-center justify-center h-screen">
-        <div className="text-center">
-          <p className="mb-4 text-muted-foreground">配置文件不存在或损坏</p>
-          <Button onClick={handleCreateDefault}>创建默认配置</Button>
+      <>
+        <Toaster />
+        <div className="flex items-center justify-center h-screen">
+          <div className="text-center">
+            <p className="mb-4 text-muted-foreground">配置文件不存在或损坏</p>
+            <Button onClick={handleCreateDefault}>创建默认配置</Button>
+          </div>
         </div>
-      </div>
+      </>
     )
   }
 
