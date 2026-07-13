@@ -144,7 +144,7 @@ fn check_sshd_service() -> (bool, String) {
     use windows::core::PCWSTR;
     use windows::Win32::System::Services::{
         CloseServiceHandle, OpenSCManagerW, OpenServiceW, QueryServiceStatus, SC_MANAGER_CONNECT,
-        SERVICE_QUERY_STATUS, SERVICE_STATUS,
+        SERVICE_QUERY_STATUS, SERVICE_RUNNING, SERVICE_STATUS,
     };
 
     let sshd_name: Vec<u16> = "sshd"
@@ -178,8 +178,7 @@ fn check_sshd_service() -> (bool, String) {
             return (false, "Unknown".to_string());
         }
 
-        // SERVICE_RUNNING = 4
-        let running = status.dwCurrentState == 4;
+        let running = status.dwCurrentState == SERVICE_RUNNING;
         let status_str = if running {
             "Running".to_string()
         } else {
