@@ -1,0 +1,21 @@
+[package]
+name = "ssh-router-cli"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "ssh-router-cli"
+path = "src/main.rs"
+
+[dependencies]
+ssh-router-config = { path = "../config" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+chrono = "0.4"
+windows = { version = "0.61", features = [
+    "Win32_System_JobObjects",
+    "Win32_System_Threading",
+    "Win32_Foundation",
+    "Win32_System_Diagnostics_Debug",
+    "Win32_Storage_FileSystem",
+] }
