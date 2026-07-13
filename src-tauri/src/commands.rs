@@ -45,6 +45,8 @@ pub fn create_default_config() -> Result<Config, String> {
 }
 
 use serde::Serialize;
+use tauri::async_runtime::spawn_blocking;
+use tauri::{AppHandle, Manager};
 
 /// 安装状态检查结果
 #[derive(Serialize)]
@@ -184,5 +186,80 @@ fn check_sshd_service() -> (bool, String) {
             "Stopped".to_string()
         };
         (running, status_str)
+    }
+}
+
+/// 安装 CLI：从 Tauri resource 释放到 C:\ProgramData\ssh\
+///
+/// 注：`run_elevated` 内部轮询等待结果（最多 30 秒），为避免阻塞 Tauri
+/// 主线程导致 UI 卡死，此处使用 `spawn_blocking` 在专用阻塞线程上执行。
+#[tauri::command]
+pub async fn install_cli(app: AppHandle) -> Result<String, String> {
+    #[cfg(target_os = "windows")]
+    {
+        // 获取 resource 目录中的 CLI exe 路径（需要在主线程外执行 IO 前准备好路径）
+        let resource_dir = app
+            .path()
+            .resource_dir()
+            .map_err(|e| format!("get resource dir: {}", e))?;
+        let src = resource_dir.join("ssh-router-cli.exe");
+        let src_path = src.to_string_lossy().replace('\\', "\\\\");
+
+        let script = format!(
+            r#"$src = "{src}"
+$dst = "C:\ProgramData\ssh\ssh-router-cli.exe"
+if (-not (Test-Path "C:\ProgramData\ssh")) {{
+    New-Item -ItemType Directory -Path "C:\ProgramData\ssh" -Force
+}}
+Copy-Item $src $dst -Force
+"#,
+            src = src_path,
+        );
+
+        spawn_blocking(move || crate::elevate::run_elevated(&script))
+            .await
+            .map_err(|e| format!("spawn_blocking join: {}", e))?
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = app;
+        Err("Install CLI is only available on Windows".to_string())
+    }
+}
+
+/// 设置 DefaultShell 注册表
+#[tauri::command]
+pub async fn set_default_shell() -> Result<String, String> {
+    #[cfg(target_os = "windows")]
+    {
+        let script = r#"Set-ItemProperty -Path "HKLM:\SOFTWARE\OpenSSH" -Name "DefaultShell" -Value "C:\ProgramData\ssh\ssh-router-cli.exe"
+"#;
+        spawn_blocking(move || crate::elevate::run_elevated(script))
+            .await
+            .map_err(|e| format!("spawn_blocking join: {}", e))?
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        Err("Set DefaultShell is only available on Windows".to_string())
+    }
+}
+
+/// 重启 sshd 服务
+#[tauri::command]
+pub async fn restart_sshd() -> Result<String, String> {
+    #[cfg(target_os = "windows")]
+    {
+        let script = r#"Restart-Service sshd -Force
+"#;
+        spawn_blocking(move || crate::elevate::run_elevated(script))
+            .await
+            .map_err(|e| format!("spawn_blocking join: {}", e))?
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        Err("Restart sshd is only available on Windows".to_string())
     }
 }

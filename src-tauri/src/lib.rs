@@ -23,6 +23,9 @@ pub fn run() {
             commands::save_config,
             commands::create_default_config,
             commands::check_status,
+            commands::install_cli,
+            commands::set_default_shell,
+            commands::restart_sshd,
         ])
         .setup(|app| {
             // 创建托盘菜单
