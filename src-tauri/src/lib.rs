@@ -1,4 +1,5 @@
 mod commands;
+mod elevate;
 
 use tauri::{
     menu::{Menu, MenuItem},
