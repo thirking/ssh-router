@@ -1,6 +1,14 @@
 # 编译产物
 *.exe
 
+# .NET 构建中间产物
+bin/
+obj/
+publish/
+
 # 临时文件
 *.tmp
 *.bak
+
+# Rust 构建产物
+/target

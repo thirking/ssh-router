@@ -1,0 +1,8 @@
+# Workspace 成员随各自 crate 创建而逐步加入：
+#   - crates/config  (Task 1, 本任务)
+#   - crates/cli     (后续任务)
+#   - src-tauri      (后续任务)
+# Cargo 要求 members 中列出的路径必须存在，故此处仅列出已创建的 crate。
+[workspace]
+members = ["crates/config"]
+resolver = "2"
