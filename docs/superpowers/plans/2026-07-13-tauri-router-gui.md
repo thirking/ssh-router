@@ -151,10 +151,10 @@ impl Config {
                     name: "WSL Ubuntu".to_string(),
                     shell: "wsl.exe".to_string(),
                     interactive_template:
-                        "wsl.exe -d Ubuntu -- bash -lc 'cd /home/thirking && exec bash -l'"
+                        "wsl.exe -d Ubuntu -- bash -lc 'cd ~ && exec bash -l'"
                             .to_string(),
                     command_template:
-                        "wsl.exe -d Ubuntu -- bash -c 'cd /home/thirking && . \"{tmpfile_wsl}\"'"
+                        "wsl.exe -d Ubuntu -- bash -c 'cd ~ && . \"{tmpfile_wsl}\"'"
                             .to_string(),
                     tmp_file_ext: ".sh".to_string(),
                     default: false,

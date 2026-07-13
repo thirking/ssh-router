@@ -1,0 +1,7 @@
+# Workspace 成员随各自 crate 创建而逐步加入：
+#   - crates/config  (Task 1)
+#   - crates/cli     (Task 2)
+#   - src-tauri      (Task 7, 本任务)
+[workspace]
+members = ["crates/config", "crates/cli", "src-tauri"]
+resolver = "2"
