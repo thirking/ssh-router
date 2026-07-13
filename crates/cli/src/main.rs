@@ -2,6 +2,7 @@ mod log;
 mod wsl;
 mod temp;
 mod routing;
+mod win32;
 
 fn main() {
     temp::clean_stale_temp_files(std::process::id());
