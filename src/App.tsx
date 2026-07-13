@@ -5,7 +5,9 @@ import { Button } from "@/components/ui/button"
 import { RouteTable } from "@/components/RouteTable"
 import { RouteDialog } from "@/components/RouteDialog"
 import { SftpField } from "@/components/SftpField"
-import { loadConfig, saveConfig, createDefaultConfig, type Config, type Route } from "@/lib/api"
+import { StatusPanel } from "@/components/StatusPanel"
+import { QuickActions } from "@/components/QuickActions"
+import { loadConfig, saveConfig, createDefaultConfig, checkStatus, type Config, type Route, type Status } from "@/lib/api"
 
 function App() {
   const [config, setConfig] = useState<Config | null>(null)
@@ -13,6 +15,16 @@ function App() {
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingIndex, setEditingIndex] = useState<number | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
+  const [status, setStatus] = useState<Status | null>(null)
+  const [statusLoading, setStatusLoading] = useState(false)
+
+  const refreshStatus = () => {
+    setStatusLoading(true)
+    checkStatus()
+      .then(s => setStatus(s))
+      .catch(err => toast.error("状态检查失败", { description: String(err) }))
+      .finally(() => setStatusLoading(false))
+  }
 
   useEffect(() => {
     loadConfig()
@@ -25,6 +37,7 @@ function App() {
         setLoadError(msg)
         toast.error("加载配置失败", { description: msg })
       })
+    refreshStatus()
   }, [])
 
   const routes = config?.routes ?? []
@@ -112,6 +125,9 @@ function App() {
     <div className="container mx-auto p-6">
       <Toaster />
       <h1 className="text-2xl font-bold mb-6">SSH Router 配置</h1>
+
+      <StatusPanel status={status} loading={statusLoading} onRefresh={refreshStatus} />
+      <QuickActions onStatusRefresh={refreshStatus} />
 
       <div className="mb-4">
         <h2 className="text-lg font-semibold mb-2">端口路由</h2>

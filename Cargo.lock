@@ -3154,7 +3154,7 @@ dependencies = [
 
 [[package]]
 name = "ssh-router"
-version = "0.1.0"
+version = "0.0.2"
 dependencies = [
  "serde",
  "serde_json",
@@ -3163,11 +3163,12 @@ dependencies = [
  "tauri-build",
  "tauri-plugin-shell",
  "tauri-plugin-single-instance",
+ "windows",
 ]
 
 [[package]]
 name = "ssh-router-cli"
-version = "0.1.0"
+version = "0.0.2"
 dependencies = [
  "chrono",
  "serde",
@@ -3178,7 +3179,7 @@ dependencies = [
 
 [[package]]
 name = "ssh-router-config"
-version = "0.1.0"
+version = "0.0.2"
 dependencies = [
  "serde",
  "serde_json",

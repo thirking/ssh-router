@@ -26,3 +26,29 @@ export async function saveConfig(config: Config): Promise<void> {
 export async function createDefaultConfig(): Promise<Config> {
   return invoke<Config>("create_default_config")
 }
+
+export interface Status {
+  cliDeployed: boolean
+  cliPath: string
+  defaultShellSet: boolean
+  defaultShellValue: string
+  configExists: boolean
+  sshdRunning: boolean
+  sshdStatus: string
+}
+
+export async function checkStatus(): Promise<Status> {
+  return invoke<Status>("check_status")
+}
+
+export async function installCli(): Promise<string> {
+  return invoke<string>("install_cli")
+}
+
+export async function setDefaultShell(): Promise<string> {
+  return invoke<string>("set_default_shell")
+}
+
+export async function restartSshd(): Promise<string> {
+  return invoke<string>("restart_sshd")
+}
