@@ -1,0 +1,74 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  release:
+    runs-on: windows-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+            src-tauri/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Install npm dependencies
+        run: npm ci || npm install
+
+      - name: Build CLI (ssh-router-cli.exe)
+        run: cargo build -p ssh-router-cli --release --target x86_64-pc-windows-msvc
+
+      - name: Build Tauri GUI (ssh-router.exe + installers)
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: 'SSH Router ${{ github.ref_name }}'
+          releaseBody: |
+            ## SSH Router ${{ github.ref_name }}
+
+            Windows OpenSSH 多端口智能路由器 — Tauri v2 托盘 GUI + Rust CLI。
+
+            ### 安装
+
+            1. 下载下方的 `.msi` 或 `.exe` 安装包安装 GUI 程序
+            2. 下载 `ssh-router-cli.exe` 放到 `C:\ProgramData\ssh\`
+            3. 设置 sshd DefaultShell：
+               ```powershell
+               Set-ItemProperty -Path "HKLM:\SOFTWARE\OpenSSH" -Name "DefaultShell" -Value "C:\ProgramData\ssh\ssh-router-cli.exe"
+               ```
+            4. 运行 SSH Router GUI 创建默认配置
+            5. 重启 sshd：`Restart-Service sshd -Force`
+          releaseDraft: false
+          prerelease: false
+
+      - name: Upload CLI exe to release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: target/x86_64-pc-windows-msvc/release/ssh-router-cli.exe
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
