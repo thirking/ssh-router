@@ -22,6 +22,7 @@ pub fn run() {
             commands::load_config,
             commands::save_config,
             commands::create_default_config,
+            commands::check_status,
         ])
         .setup(|app| {
             // 创建托盘菜单
