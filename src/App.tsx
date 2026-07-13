@@ -12,6 +12,7 @@ function App() {
   const [sftpCommand, setSftpCommand] = useState("")
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingIndex, setEditingIndex] = useState<number | null>(null)
+  const [loadError, setLoadError] = useState<string | null>(null)
 
   useEffect(() => {
     loadConfig()
@@ -20,7 +21,9 @@ function App() {
         setSftpCommand(cfg.sftpCommand)
       })
       .catch(err => {
-        toast.error("加载配置失败", { description: String(err) })
+        const msg = String(err)
+        setLoadError(msg)
+        toast.error("加载配置失败", { description: msg })
       })
   }, [])
 
@@ -87,13 +90,18 @@ function App() {
   }
 
   if (!config) {
+    const isCorrupt = loadError?.startsWith("parse config") ?? false
     return (
       <>
         <Toaster />
         <div className="flex items-center justify-center h-screen">
           <div className="text-center">
-            <p className="mb-4 text-muted-foreground">配置文件不存在或损坏</p>
-            <Button onClick={handleCreateDefault}>创建默认配置</Button>
+            <p className="mb-4 text-muted-foreground">
+              {isCorrupt ? "配置文件损坏" : "配置文件不存在"}
+            </p>
+            <Button onClick={handleCreateDefault}>
+              {isCorrupt ? "覆盖为默认配置" : "创建默认配置"}
+            </Button>
           </div>
         </div>
       </>

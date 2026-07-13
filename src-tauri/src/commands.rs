@@ -24,6 +24,10 @@ pub fn save_config(config: Config) -> Result<(), String> {
         ));
     }
     let json = serde_json::to_string_pretty(&config).map_err(|e| format!("serialize config: {}", e))?;
+    // 确保目录存在（与 create_default_config 一致）
+    if let Some(parent) = Path::new(CONFIG_PATH).parent() {
+        fs::create_dir_all(parent).map_err(|e| format!("create dir: {}", e))?;
+    }
     fs::write(CONFIG_PATH, json).map_err(|e| format!("write config: {}", e))
 }
 
