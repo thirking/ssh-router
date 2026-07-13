@@ -19,9 +19,8 @@ Windows OpenSSH 多端口智能路由器，带可视化配置界面。
 |------|------|
 | `crates/config/` | 共享 `Config` / `Route` 结构与默认配置（被 CLI 与 GUI 共用） |
 | `crates/cli/` | `ssh-router-cli.exe`：Win32 `CreateProcessW` + Job Object 路由实现 |
-| `src-tauri/` | `ssh-router.exe`：Tauri v2 后端（托盘 + 单实例 + Tauri 命令） |
-| `src/` | React + shadcn/ui 前端 |
-| `SshRouter.cs` / `SshRouter.csproj` | 旧版 C# 实现（保留作为参考，不再参与构建） |
+| `src-tauri/` | `ssh-router.exe`：Tauri v2 后端（托盘 + 单实例 + Tauri 命令 + UAC 提权） |
+| `src/` | React + shadcn/ui 前端（路由管理 + 安装状态 + 快捷操作） |
 | `fix-sshd.ps1` | 一次性 sshd 修复脚本（保留） |
 
 ## 解决的问题
@@ -159,24 +158,28 @@ build.cmd "D:\deploy"
 
 产物汇集到 `publish/`（或指定目录）下：
 
-- `ssh-router-cli.exe`：路由程序，部署到 `C:\ProgramData\ssh\`
-- `ssh-router.exe`：托盘 GUI，部署到任意位置（如 `C:\Program Files\SSH Router\` 或 `C:\ProgramData\ssh\`）
-
-> 旧的 `SshRouter.cs` / `SshRouter.csproj` 仍保留在仓库中作为参考，但不再被 `build.sh` / `build.cmd` 构建。
+- `ssh-router-cli.exe`：路由程序，CI 会自动打包进安装包（作为 Tauri resource）
+- `ssh-router.exe`：托盘 GUI，安装包内含 CLI
 
 ## 安装
 
-### 1. 部署 exe
+### 1. 下载安装包
 
-将两个 exe 复制到 `C:\ProgramData\ssh\`（CLI 必须在该路径，因为 sshd 的 `DefaultShell` 指向它；GUI 放在同目录便于管理）。
+从 [GitHub Releases](https://github.com/thirking/ssh-router/releases) 下载 `.msi` 或 `.exe` 安装包，安装 SSH Router GUI。
 
-### 2. 设置 DefaultShell
+安装包自带 `ssh-router-cli.exe`（打包为 Tauri resource），无需单独下载。
 
-将 `DefaultShell` 指向 **CLI**（不是 GUI）：
+### 2. 一键安装（GUI 内）
 
-```powershell
-Set-ItemProperty -Path "HKLM:\SOFTWARE\OpenSSH" -Name "DefaultShell" -Value "C:\ProgramData\ssh\ssh-router-cli.exe"
-```
+运行 SSH Router（从开始菜单或桌面快捷方式启动），主界面上方有**安装状态**面板和**快捷操作**按钮区：
+
+1. 点击 **「安装 CLI」** — 从安装包释放 CLI 到 `C:\ProgramData\ssh\ssh-router-cli.exe`（会弹出 UAC 提权）
+2. 点击 **「设置 DefaultShell」** — 自动设置注册表 `HKLM:\SOFTWARE\OpenSSH\DefaultShell` 指向 CLI（UAC 提权）
+3. 点击 **「重启 sshd」** — 重启 SSH 服务使配置生效（UAC 提权）
+
+安装状态面板会实时显示四项检查结果（CLI 部署、DefaultShell 设置、配置文件、sshd 服务状态），绿勾表示已完成。
+
+> 也可以手动执行这些操作（见下方手动安装），但 GUI 一键安装更便捷。
 
 ### 3. 配置 sshd_config
 
@@ -203,17 +206,25 @@ Match Group administrators
     AuthorizedKeysFile __PROGRAMDATA__/ssh/administrators_authorized_keys
 ```
 
-### 4. 首次运行 GUI
+### 4. 配置路由
 
-以管理员身份运行 `ssh-router.exe`：
+SSH Router 常驻系统托盘（单实例，第二次启动会激活已有窗口）。双击托盘图标打开主界面：
 
-- 它会常驻系统托盘（单实例，第二次启动会激活已有窗口）
-- 若 `C:\ProgramData\ssh\ssh-router.json` 不存在，会自动写入默认三端口配置
+- 若 `C:\ProgramData\ssh\ssh-router.json` 不存在，会提示创建默认三端口配置
 - 在主界面中添加/编辑/删除端口路由、设置默认路由、配置 SFTP 命令
 
-### 5. 重启 sshd
+### 5. 手动安装（可选）
+
+如果不使用 GUI 一键安装，也可以手动执行：
 
 ```powershell
+# 部署 CLI（从安装包 resource 目录或 Release 下载）
+Copy-Item ssh-router-cli.exe "C:\ProgramData\ssh\ssh-router-cli.exe" -Force
+
+# 设置 DefaultShell
+Set-ItemProperty -Path "HKLM:\SOFTWARE\OpenSSH" -Name "DefaultShell" -Value "C:\ProgramData\ssh\ssh-router-cli.exe"
+
+# 重启 sshd
 Restart-Service sshd -Force
 ```
 
@@ -279,5 +290,6 @@ Restart-Service sshd -Force
 
 ### GUI 不显示 / 托盘无图标
 
-- 确认以管理员身份运行 `ssh-router.exe`
+- SSH Router 以普通用户运行即可，安装 CLI / 设置 DefaultShell / 重启 sshd 时会按需弹出 UAC 提权
 - 单实例插件会激活已有窗口，若托盘有图标说明已在运行
+- 双击托盘图标可打开主界面
