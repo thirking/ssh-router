@@ -25,6 +25,8 @@ src-tauri/target/
 src-tauri/gen/
 # Tauri bundle install包产物 (build 后输出到 src-tauri/target/release/bundle/)
 src-tauri/target/release/bundle/
+# Tauri resources (CI 生成)
+src-tauri/resources/
 
 # macOS
 .DS_Store

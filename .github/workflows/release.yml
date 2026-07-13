@@ -38,8 +38,11 @@ jobs:
       - name: Install npm dependencies
         run: npm ci || npm install
 
-      - name: Build CLI (ssh-router-cli.exe)
-        run: cargo build -p ssh-router-cli --release --target x86_64-pc-windows-msvc
+      - name: Build CLI and copy to resources
+        run: |
+          cargo build -p ssh-router-cli --release --target x86_64-pc-windows-msvc
+          New-Item -ItemType Directory -Force -Path src-tauri/resources
+          Copy-Item target/x86_64-pc-windows-msvc/release/ssh-router-cli.exe src-tauri/resources/
 
       - name: Build Tauri GUI (ssh-router.exe + installers)
         uses: tauri-apps/tauri-action@v0
@@ -56,19 +59,9 @@ jobs:
             ### 安装
 
             1. 下载下方的 `.msi` 或 `.exe` 安装包安装 GUI 程序
-            2. 下载 `ssh-router-cli.exe` 放到 `C:\ProgramData\ssh\`
-            3. 设置 sshd DefaultShell：
-               ```powershell
-               Set-ItemProperty -Path "HKLM:\SOFTWARE\OpenSSH" -Name "DefaultShell" -Value "C:\ProgramData\ssh\ssh-router-cli.exe"
-               ```
-            4. 运行 SSH Router GUI 创建默认配置
-            5. 重启 sshd：`Restart-Service sshd -Force`
+            2. 安装后运行 SSH Router，在主界面点击"安装 CLI"按钮（自动部署 CLI 到 `C:\ProgramData\ssh\`）
+            3. 点击"设置 DefaultShell"按钮（自动配置 sshd 使用 CLI）
+            4. 点击"重启 sshd"按钮使配置生效
+            5. 在路由配置区添加/编辑端口路由，保存即可
           releaseDraft: false
           prerelease: false
-
-      - name: Upload CLI exe to release
-        uses: softprops/action-gh-release@v2
-        with:
-          files: target/x86_64-pc-windows-msvc/release/ssh-router-cli.exe
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
