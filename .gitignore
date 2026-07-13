@@ -12,15 +12,25 @@ publish/
 
 # Rust 构建产物
 /target
+/crates/*/target
 
 # Node.js
 node_modules/
 dist/
+.vite/
 
 # Tauri
 src-tauri/target/
 src-tauri/gen/
+# Tauri bundle install包产物 (build 后输出到 src-tauri/target/release/bundle/)
+src-tauri/target/release/bundle/
 
 # macOS
 .DS_Store
+
+# IDE / 编辑器
+.vscode/
+.idea/
+*.swp
+*.swo
 
