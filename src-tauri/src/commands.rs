@@ -27,7 +27,7 @@ pub async fn save_config(config: Config) -> Result<(), String> {
 
     #[cfg(target_os = "windows")]
     {
-        write_config_elevated(&json)?;
+        write_config_elevated(&json).await?;
         Ok(())
     }
 
@@ -46,7 +46,7 @@ pub async fn create_default_config() -> Result<Config, String> {
 
     #[cfg(target_os = "windows")]
     {
-        write_config_elevated(&json)?;
+        write_config_elevated(&json).await?;
     }
 
     #[cfg(not(target_os = "windows"))]
@@ -63,7 +63,7 @@ pub async fn create_default_config() -> Result<Config, String> {
 /// 先写到临时文件，再用提权的 PowerShell 复制到目标路径，
 /// 避免在 PowerShell 脚本中嵌入大段 JSON（转义问题）。
 #[cfg(target_os = "windows")]
-fn write_config_elevated(json: &str) -> Result<(), String> {
+async fn write_config_elevated(json: &str) -> Result<(), String> {
     use tauri::async_runtime::spawn_blocking;
 
     // 写 JSON 到临时文件
