@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { Toaster } from "@/components/ui/sonner"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
@@ -7,7 +7,12 @@ import { RouteDialog } from "@/components/RouteDialog"
 import { SftpField } from "@/components/SftpField"
 import { StatusPanel } from "@/components/StatusPanel"
 import { QuickActions } from "@/components/QuickActions"
-import { loadConfig, saveConfig, createDefaultConfig, checkStatus, type Config, type Route, type Status } from "@/lib/api"
+import { UpdatePanel } from "@/components/UpdatePanel"
+import { UpdateDialog } from "@/components/UpdateDialog"
+import { CliSyncDialog } from "@/components/CliSyncDialog"
+import { loadConfig, saveConfig, createDefaultConfig, checkStatus, installCli, type Config, type Route, type Status } from "@/lib/api"
+import { useUpdateManager } from "@/lib/update-manager"
+import { tauriUpdateAdapter } from "@/lib/tauri-update-adapter"
 
 function App() {
   const [config, setConfig] = useState<Config | null>(null)
@@ -17,6 +22,11 @@ function App() {
   const [loadError, setLoadError] = useState<string | null>(null)
   const [status, setStatus] = useState<Status | null>(null)
   const [statusLoading, setStatusLoading] = useState(false)
+  const [cliSyncOpen, setCliSyncOpen] = useState(false)
+  const [cliSyncing, setCliSyncing] = useState(false)
+  const cliSyncPrompted = useRef(false)
+  const updatesEnabled = !import.meta.env.DEV
+  const updateManager = useUpdateManager(tauriUpdateAdapter, { enabled: updatesEnabled })
 
   const refreshStatus = () => {
     setStatusLoading(true)
@@ -39,6 +49,13 @@ function App() {
       })
     refreshStatus()
   }, [])
+
+  useEffect(() => {
+    if (status?.cliDeployed && !status.cliUpToDate && !cliSyncPrompted.current) {
+      cliSyncPrompted.current = true
+      setCliSyncOpen(true)
+    }
+  }, [status])
 
   const routes = config?.routes ?? []
 
@@ -102,11 +119,36 @@ function App() {
       .catch(err => toast.error("创建默认配置失败", { description: String(err) }))
   }
 
+  const handleSyncCli = async () => {
+    setCliSyncing(true)
+    try {
+      const message = await installCli()
+      toast.success("CLI 同步成功", { description: message })
+      setCliSyncOpen(false)
+      refreshStatus()
+    } catch (err) {
+      toast.error("CLI 同步失败", { description: String(err) })
+    } finally {
+      setCliSyncing(false)
+    }
+  }
+
   if (!config) {
     const isCorrupt = loadError?.startsWith("parse config") ?? false
     return (
       <>
         <Toaster />
+        <UpdateDialog
+          state={updateManager.state}
+          onInstall={updateManager.install}
+          onDismiss={updateManager.dismiss}
+        />
+        <CliSyncDialog
+          open={cliSyncOpen}
+          syncing={cliSyncing}
+          onOpenChange={setCliSyncOpen}
+          onSync={() => void handleSyncCli()}
+        />
         <div className="flex items-center justify-center h-screen">
           <div className="text-center">
             <p className="mb-4 text-muted-foreground">
@@ -122,32 +164,50 @@ function App() {
   }
 
   return (
-    <div className="container mx-auto p-6">
+    <>
       <Toaster />
-      <h1 className="text-2xl font-bold mb-6">SSH Router 配置</h1>
-
-      <StatusPanel status={status} loading={statusLoading} onRefresh={refreshStatus} />
-      <QuickActions onStatusRefresh={refreshStatus} />
-
-      <div className="mb-4">
-        <h2 className="text-lg font-semibold mb-2">端口路由</h2>
-        <RouteTable routes={routes} onEdit={handleEdit} onDelete={handleDelete} />
-        <Button className="mt-2" onClick={handleAdd}>添加路由</Button>
-      </div>
-
-      <div className="mb-6">
-        <SftpField value={sftpCommand} onChange={setSftpCommand} />
-      </div>
-
-      <Button onClick={handleSave}>保存配置</Button>
-
-      <RouteDialog
-        open={dialogOpen}
-        route={editingIndex !== null ? routes[editingIndex] : null}
-        onSave={handleSaveRoute}
-        onClose={() => setDialogOpen(false)}
+      <UpdateDialog
+        state={updateManager.state}
+        onInstall={updateManager.install}
+        onDismiss={updateManager.dismiss}
       />
-    </div>
+      <CliSyncDialog
+        open={cliSyncOpen}
+        syncing={cliSyncing}
+        onOpenChange={setCliSyncOpen}
+        onSync={() => void handleSyncCli()}
+      />
+      <div className="container mx-auto p-6">
+        <h1 className="text-2xl font-bold mb-6">SSH Router 配置</h1>
+
+        <StatusPanel status={status} loading={statusLoading} onRefresh={refreshStatus} />
+        <UpdatePanel
+          state={updateManager.state}
+          enabled={updatesEnabled}
+          onCheck={updateManager.checkNow}
+        />
+        <QuickActions onStatusRefresh={refreshStatus} />
+
+        <div className="mb-4">
+          <h2 className="text-lg font-semibold mb-2">端口路由</h2>
+          <RouteTable routes={routes} onEdit={handleEdit} onDelete={handleDelete} />
+          <Button className="mt-2" onClick={handleAdd}>添加路由</Button>
+        </div>
+
+        <div className="mb-6">
+          <SftpField value={sftpCommand} onChange={setSftpCommand} />
+        </div>
+
+        <Button onClick={handleSave}>保存配置</Button>
+
+        <RouteDialog
+          open={dialogOpen}
+          route={editingIndex !== null ? routes[editingIndex] : null}
+          onSave={handleSaveRoute}
+          onClose={() => setDialogOpen(false)}
+        />
+      </div>
+    </>
   )
 }
 

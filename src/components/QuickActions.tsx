@@ -29,10 +29,10 @@ export function QuickActions({ onStatusRefresh }: QuickActionsProps) {
       <div className="flex gap-2 flex-wrap">
         <Button
           variant="outline"
-          onClick={() => runAction("安装 CLI", installCli)}
+          onClick={() => runAction("安装/更新 CLI", installCli)}
           disabled={loadingAction !== null}
         >
-          {loadingAction === "安装 CLI" ? "安装中..." : "安装 CLI"}
+          {loadingAction === "安装/更新 CLI" ? "安装中..." : "安装/更新 CLI"}
         </Button>
         <Button
           variant="outline"

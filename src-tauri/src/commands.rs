@@ -1,5 +1,6 @@
 use ssh_router_config::Config;
 use std::fs;
+#[cfg(target_os = "windows")]
 use std::path::Path;
 
 /// 配置文件路径（与 Windows 上 OpenSSH 固定安装位置对齐）
@@ -23,7 +24,8 @@ pub async fn save_config(config: Config) -> Result<(), String> {
             defaults.len()
         ));
     }
-    let json = serde_json::to_string_pretty(&config).map_err(|e| format!("serialize config: {}", e))?;
+    let json =
+        serde_json::to_string_pretty(&config).map_err(|e| format!("serialize config: {}", e))?;
 
     #[cfg(target_os = "windows")]
     {
@@ -42,7 +44,8 @@ pub async fn save_config(config: Config) -> Result<(), String> {
 #[tauri::command]
 pub async fn create_default_config() -> Result<Config, String> {
     let config = Config::default_config();
-    let json = serde_json::to_string_pretty(&config).map_err(|e| format!("serialize config: {}", e))?;
+    let json =
+        serde_json::to_string_pretty(&config).map_err(|e| format!("serialize config: {}", e))?;
 
     #[cfg(target_os = "windows")]
     {
@@ -93,14 +96,18 @@ icacls $dst /grant 'SYSTEM:(R)' 'Administrators:(F)' 'Users:(R)'
 }
 
 use serde::Serialize;
+#[cfg(target_os = "windows")]
 use tauri::async_runtime::spawn_blocking;
-use tauri::{AppHandle, Manager};
+use tauri::AppHandle;
+#[cfg(target_os = "windows")]
+use tauri::Manager;
 
 /// 安装状态检查结果
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Status {
     pub cli_deployed: bool,
+    pub cli_up_to_date: bool,
     pub cli_path: String,
     pub default_shell_set: bool,
     pub default_shell_value: String,
@@ -113,11 +120,23 @@ const CLI_DEPLOY_PATH: &str = r"C:\ProgramData\ssh\ssh-router-cli.exe";
 
 /// 检查安装状态（不需要管理员权限）
 #[tauri::command]
-pub fn check_status() -> Result<Status, String> {
+pub fn check_status(app: AppHandle) -> Result<Status, String> {
     #[cfg(target_os = "windows")]
     {
         // CLI 部署检查
         let cli_deployed = Path::new(CLI_DEPLOY_PATH).exists();
+        let cli_up_to_date = if cli_deployed {
+            let bundled_cli = app
+                .path()
+                .resolve(
+                    "resources/ssh-router-cli.exe",
+                    tauri::path::BaseDirectory::Resource,
+                )
+                .map_err(|e| format!("resolve resource path: {e}"))?;
+            crate::cli_sync::files_match(&bundled_cli, Path::new(CLI_DEPLOY_PATH))?
+        } else {
+            false
+        };
 
         // 注册表读取 DefaultShell
         let (default_shell_value, default_shell_set) = read_default_shell();
@@ -130,6 +149,7 @@ pub fn check_status() -> Result<Status, String> {
 
         Ok(Status {
             cli_deployed,
+            cli_up_to_date,
             cli_path: CLI_DEPLOY_PATH.to_string(),
             default_shell_set,
             default_shell_value,
@@ -141,6 +161,7 @@ pub fn check_status() -> Result<Status, String> {
 
     #[cfg(not(target_os = "windows"))]
     {
+        let _ = app;
         Err("Status check is only available on Windows".to_string())
     }
 }
@@ -149,7 +170,7 @@ pub fn check_status() -> Result<Status, String> {
 #[cfg(target_os = "windows")]
 fn read_default_shell() -> (String, bool) {
     use windows::core::PCWSTR;
-    use windows::Win32::System::Registry::{HKEY_LOCAL_MACHINE, RegGetValueW, RRF_RT_REG_SZ};
+    use windows::Win32::System::Registry::{RegGetValueW, HKEY_LOCAL_MACHINE, RRF_RT_REG_SZ};
 
     let sub_key: Vec<u16> = "SOFTWARE\\OpenSSH"
         .encode_utf16()
@@ -195,10 +216,7 @@ fn check_sshd_service() -> (bool, String) {
         SERVICE_QUERY_STATUS, SERVICE_RUNNING, SERVICE_STATUS,
     };
 
-    let sshd_name: Vec<u16> = "sshd"
-        .encode_utf16()
-        .chain(std::iter::once(0))
-        .collect();
+    let sshd_name: Vec<u16> = "sshd".encode_utf16().chain(std::iter::once(0)).collect();
 
     unsafe {
         let h_scm = OpenSCManagerW(None, None, SC_MANAGER_CONNECT);
@@ -208,8 +226,7 @@ fn check_sshd_service() -> (bool, String) {
         }
 
         let h_scm = h_scm.unwrap();
-        let h_service =
-            OpenServiceW(h_scm, PCWSTR(sshd_name.as_ptr()), SERVICE_QUERY_STATUS);
+        let h_service = OpenServiceW(h_scm, PCWSTR(sshd_name.as_ptr()), SERVICE_QUERY_STATUS);
 
         let _ = CloseServiceHandle(h_scm);
 
@@ -250,7 +267,10 @@ pub async fn install_cli(app: AppHandle) -> Result<String, String> {
         // 用 resolve() + BaseDirectory::Resource 确保路径正确
         let src = app
             .path()
-            .resolve("resources/ssh-router-cli.exe", tauri::path::BaseDirectory::Resource)
+            .resolve(
+                "resources/ssh-router-cli.exe",
+                tauri::path::BaseDirectory::Resource,
+            )
             .map_err(|e| format!("resolve resource path: {}", e))?;
         let src_path = src.to_string_lossy();
 

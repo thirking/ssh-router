@@ -165,9 +165,11 @@ build.cmd "D:\deploy"
 
 ### 1. 下载安装包
 
-从 [GitHub Releases](https://github.com/thirking/ssh-router/releases) 下载 `.msi` 或 `.exe` 安装包，安装 SSH Router GUI。
+从 [GitHub Releases](https://github.com/thirking/ssh-router/releases) 下载 `setup.exe` 安装包，安装 SSH Router GUI。
 
 安装包自带 `ssh-router-cli.exe`（打包为 Tauri resource），无需单独下载。
+
+> 从 `v0.0.8` 起统一使用 NSIS `setup.exe`。`v0.0.7` 及更早版本需要手动安装 `v0.0.8` 一次；如果旧版通过 MSI 安装，建议先在 Windows“已安装的应用”中卸载旧 GUI。卸载 GUI 不会删除 `C:\ProgramData\ssh\` 中的路由配置和已部署 CLI。
 
 ### 2. 一键安装（GUI 内）
 
@@ -237,6 +239,16 @@ Restart-Service sshd -Force
 - 配置 SFTP 命令（默认 `cmd.exe /c "C:\Windows\System32\OpenSSH\sftp-server.exe"`）
 
 模板中可使用占位符：`{shell}`、`{tmpfile}`、`{tmpfile_wsl}`（详见 `crates/config/src/lib.rs`）。保存后写入 `ssh-router.json`，**立即生效，下次 SSH 连接即使用新配置，无需重启 sshd 或重新编译**。
+
+## 自动更新
+
+- 应用启动时检查一次稳定版更新，常驻托盘期间每 24 小时再次检查
+- 检测到新版本后显示版本号和更新说明；确认后下载、验证签名、安装并重启
+- 主界面的“软件更新”区域可随时手动检查
+- GUI 更新后如果已部署 CLI 与安装包内版本不一致，会提示通过 UAC 同步；取消后可使用“安装/更新 CLI”重试
+- 自动检查网络失败不会影响托盘、路由配置或 SSH 服务
+
+更新包由 Tauri 签名机制验证，更新源固定为本项目的 GitHub Releases 稳定版；草稿和预发布版本不会进入自动更新通道。
 
 ## 环境要求
 

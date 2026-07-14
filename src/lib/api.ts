@@ -29,6 +29,7 @@ export async function createDefaultConfig(): Promise<Config> {
 
 export interface Status {
   cliDeployed: boolean
+  cliUpToDate: boolean
   cliPath: string
   defaultShellSet: boolean
   defaultShellValue: string

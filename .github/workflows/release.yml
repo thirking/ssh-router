@@ -38,6 +38,28 @@ jobs:
       - name: Install npm dependencies
         run: npm ci || npm install
 
+      - name: Verify release versions
+        shell: pwsh
+        run: |
+          $expected = "${{ github.ref_name }}".TrimStart('v')
+          $versions = [ordered]@{
+            "package.json" = (Get-Content package.json | ConvertFrom-Json).version
+            "src-tauri/tauri.conf.json" = (Get-Content src-tauri/tauri.conf.json | ConvertFrom-Json).version
+          }
+          foreach ($path in @(
+            "src-tauri/Cargo.toml",
+            "crates/cli/Cargo.toml",
+            "crates/config/Cargo.toml"
+          )) {
+            $match = Select-String -Path $path -Pattern '^version\s*=\s*"([^"]+)"' | Select-Object -First 1
+            $versions[$path] = $match.Matches[0].Groups[1].Value
+          }
+          $mismatches = $versions.GetEnumerator() | Where-Object { $_.Value -ne $expected }
+          if ($mismatches) {
+            $details = ($mismatches | ForEach-Object { "$($_.Key)=$($_.Value)" }) -join ", "
+            throw "Version mismatch: tag=$expected; $details"
+          }
+
       - name: Build CLI and copy to resources
         run: |
           cargo build -p ssh-router-cli --release --target x86_64-pc-windows-msvc
@@ -48,6 +70,8 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tagName: ${{ github.ref_name }}
           releaseName: 'SSH Router ${{ github.ref_name }}'
@@ -58,10 +82,13 @@ jobs:
 
             ### 安装
 
-            1. 下载下方的 `.msi` 或 `.exe` 安装包安装 GUI 程序
-            2. 安装后运行 SSH Router，在主界面点击"安装 CLI"按钮（自动部署 CLI 到 `C:\ProgramData\ssh\`）
+            1. 下载下方的 `setup.exe` 安装 SSH Router GUI
+            2. 安装后运行 SSH Router，在主界面点击"安装/更新 CLI"按钮（自动部署 CLI 到 `C:\ProgramData\ssh\`）
             3. 点击"设置 DefaultShell"按钮（自动配置 sshd 使用 CLI）
             4. 点击"重启 sshd"按钮使配置生效
             5. 在路由配置区添加/编辑端口路由，保存即可
+
+            > v0.0.7 及更早版本需要手动安装本版本一次；从本版本开始，应用会自动检查并提示安装后续稳定版。
           releaseDraft: false
           prerelease: false
+          updaterJsonPreferNsis: true

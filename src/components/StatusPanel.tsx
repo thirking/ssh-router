@@ -1,4 +1,4 @@
-import { CheckCircle2, XCircle, RefreshCw } from "lucide-react"
+import { AlertTriangle, CheckCircle2, XCircle, RefreshCw } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import type { Status } from "@/lib/api"
 
@@ -8,11 +8,15 @@ interface StatusPanelProps {
   onRefresh: () => void
 }
 
-function StatusItem({ ok, label, detail }: { ok: boolean; label: string; detail?: string }) {
+type ItemStatus = "ok" | "error" | "warning"
+
+function StatusItem({ status, label, detail }: { status: ItemStatus; label: string; detail?: string }) {
   return (
     <div className="flex items-center gap-2">
-      {ok ? (
+      {status === "ok" ? (
         <CheckCircle2 className="h-4 w-4 text-green-500" />
+      ) : status === "warning" ? (
+        <AlertTriangle className="h-4 w-4 text-amber-500" />
       ) : (
         <XCircle className="h-4 w-4 text-red-500" />
       )}
@@ -35,21 +39,21 @@ export function StatusPanel({ status, loading, onRefresh }: StatusPanelProps) {
       {status ? (
         <div className="grid grid-cols-2 gap-2">
           <StatusItem
-            ok={status.cliDeployed}
-            label="CLI 已部署"
+            status={!status.cliDeployed ? "error" : status.cliUpToDate ? "ok" : "warning"}
+            label={!status.cliDeployed ? "CLI 未部署" : status.cliUpToDate ? "CLI 已是最新" : "CLI 待更新"}
             detail={status.cliDeployed ? status.cliPath : undefined}
           />
           <StatusItem
-            ok={status.defaultShellSet}
+            status={status.defaultShellSet ? "ok" : "error"}
             label="DefaultShell 已设置"
             detail={status.defaultShellSet ? status.defaultShellValue : undefined}
           />
           <StatusItem
-            ok={status.configExists}
+            status={status.configExists ? "ok" : "error"}
             label="配置文件存在"
           />
           <StatusItem
-            ok={status.sshdRunning}
+            status={status.sshdRunning ? "ok" : "error"}
             label="sshd 服务"
             detail={status.sshdStatus}
           />
