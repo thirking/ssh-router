@@ -244,12 +244,14 @@ fn check_sshd_service() -> (bool, String) {
 pub async fn install_cli(app: AppHandle) -> Result<String, String> {
     #[cfg(target_os = "windows")]
     {
-        // 获取 resource 目录中的 CLI exe 路径（需要在主线程外执行 IO 前准备好路径）
-        let resource_dir = app
+        // 获取 resource 目录中的 CLI exe 路径
+        // bundle.resources 声明为 "resources/ssh-router-cli.exe"，
+        // 打包后文件位于 resource_dir/resources/ssh-router-cli.exe
+        // 用 resolve() + BaseDirectory::Resource 确保路径正确
+        let src = app
             .path()
-            .resource_dir()
-            .map_err(|e| format!("get resource dir: {}", e))?;
-        let src = resource_dir.join("ssh-router-cli.exe");
+            .resolve("resources/ssh-router-cli.exe", tauri::path::BaseDirectory::Resource)
+            .map_err(|e| format!("resolve resource path: {}", e))?;
         let src_path = src.to_string_lossy();
 
         let script = format!(
