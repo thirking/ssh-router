@@ -81,7 +81,7 @@ Copy-Item $src $dst -Force
 Remove-Item $src -Force
 # 确保 sshd (SYSTEM) 能读取配置
 icacls $dst /reset
-icacls $dst /grant "SYSTEM:(R)" "Administrators:(F)" "Users:(R)"
+icacls $dst /grant 'SYSTEM:(R)' 'Administrators:(F)' 'Users:(R)'
 "#,
         src = tmp_path,
     );
@@ -259,9 +259,9 @@ if (-not (Test-Path "C:\ProgramData\ssh")) {{
     New-Item -ItemType Directory -Path "C:\ProgramData\ssh" -Force
 }}
 Copy-Item $src $dst -Force
-# 确保 sshd (SYSTEM) 能执行 CLI：重置 ACL 为继承父目录权限
+# 确保 sshd (SYSTEM) 能执行 CLI
 icacls $dst /reset
-icacls $dst /grant "SYSTEM:(RX)" "Administrators:(F)" "Users:(RX)"
+icacls $dst /grant 'SYSTEM:(RX)' 'Administrators:(F)' 'Users:(RX)'
 "#,
             src = src_path,
         );

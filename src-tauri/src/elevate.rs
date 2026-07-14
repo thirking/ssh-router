@@ -2,19 +2,29 @@ use std::fs;
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
-/// 结果文件路径
-fn result_file_path() -> PathBuf {
-    std::env::temp_dir().join("ssh-router-action-result.json")
+/// 结果文件路径（每次调用唯一，避免连续操作读到上一次的结果）
+fn result_file_path(id: u64) -> PathBuf {
+    std::env::temp_dir().join(format!("ssh-router-result-{}.json", id))
 }
 
 /// 实际脚本路径
-fn script_file_path() -> PathBuf {
-    std::env::temp_dir().join("ssh-router-action.ps1")
+fn script_file_path(id: u64) -> PathBuf {
+    std::env::temp_dir().join(format!("ssh-router-action-{}.ps1", id))
 }
 
 /// Wrapper 脚本路径
-fn wrapper_file_path() -> PathBuf {
-    std::env::temp_dir().join("ssh-router-wrapper.ps1")
+fn wrapper_file_path(id: u64) -> PathBuf {
+    std::env::temp_dir().join(format!("ssh-router-wrapper-{}.ps1", id))
+}
+
+/// 生成唯一 ID（用时间戳 + 随机数）
+fn unique_id() -> u64 {
+    use std::time::SystemTime;
+    let ts = SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos() as u64;
+    ts ^ (std::process::id() as u64)
 }
 
 /// 以管理员权限执行 PowerShell 脚本
@@ -31,11 +41,11 @@ pub fn run_elevated(script: &str) -> Result<String, String> {
     use windows::Win32::UI::WindowsAndMessaging::SW_HIDE;
 
     // 清理之前的结果文件
-    let result_path = result_file_path();
-    let _ = fs::remove_file(&result_path);
+    let id = unique_id();
+    let result_path = result_file_path(id);
 
     // 写实际脚本（加 UTF-8 BOM，让 PowerShell 5.1 正确以 UTF-8 读取）
-    let script_path = script_file_path();
+    let script_path = script_file_path(id);
     let mut script_bytes = Vec::with_capacity(script.len() + 3);
     script_bytes.extend_from_slice(&[0xEF, 0xBB, 0xBF]);
     script_bytes.extend_from_slice(script.as_bytes());
@@ -57,7 +67,7 @@ $result | Out-File -FilePath "{result}" -Encoding UTF8
         result = result_path.to_string_lossy(),
     );
 
-    let wrapper_path = wrapper_file_path();
+    let wrapper_path = wrapper_file_path(id);
     // 加 UTF-8 BOM，让 PowerShell 5.1 正确以 UTF-8 读取脚本
     let mut wrapper_bytes = Vec::with_capacity(wrapper_script.len() + 3);
     wrapper_bytes.extend_from_slice(&[0xEF, 0xBB, 0xBF]);
@@ -120,38 +130,25 @@ $result | Out-File -FilePath "{result}" -Encoding UTF8
     let _ = fs::remove_file(&wrapper_path);
     let _ = fs::remove_file(&result_path);
 
-    // 解析 JSON: {"success": true, "message": "..."} 或 {"success": false, "message": "..."}
-    // PowerShell ConvertTo-Json 输出可能带 BOM
+    // 去掉 BOM 并解析 JSON
     let result_content = result_content.trim_start_matches('\u{feff}').trim();
 
-    // 简单解析（避免引入 serde_json 到 elevate 模块）
-    let success = result_content.contains("\"success\": true")
-        || result_content.contains("\"success\":true");
-    let message = extract_json_value(result_content, "message")
-        .unwrap_or_else(|| "未知结果".to_string());
+    // 用 serde_json 解析，避免手写解析器在多行/空格差异上出错
+    let json: serde_json::Value = serde_json::from_str(result_content)
+        .map_err(|e| format!("parse result JSON: {} | raw: {}", e, result_content))?;
+
+    let success = json.get("success")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    let message = json.get("message")
+        .and_then(|v| v.as_str())
+        .unwrap_or("未知结果")
+        .to_string();
 
     if success {
         Ok(message)
     } else {
         Err(message)
-    }
-}
-
-/// 从 JSON 字符串中提取指定键的值（简单实现，不依赖 serde）
-fn extract_json_value(json: &str, key: &str) -> Option<String> {
-    let pattern = format!("\"{}\":", key);
-    let idx = json.find(&pattern)?;
-    let rest = &json[idx + pattern.len()..];
-    let rest = rest.trim_start();
-    if rest.starts_with('"') {
-        // 字符串值
-        let start = 1;
-        let end = rest[1..].find('"')? + 1;
-        Some(rest[start..end].to_string())
-    } else {
-        // 非字符串值（true/false/数字）
-        let end = rest.find(|c: char| c == ',' || c == '}' || c.is_whitespace())?;
-        Some(rest[..end].trim().to_string())
     }
 }
 
@@ -173,29 +170,9 @@ pub fn run_elevated(_script: &str) -> Result<String, String> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     #[test]
-    fn test_extract_json_value_string() {
-        let json = r#"{"success": true, "message": "操作成功"}"#;
-        assert_eq!(extract_json_value(json, "message"), Some("操作成功".to_string()));
-    }
-
-    #[test]
-    fn test_extract_json_value_boolean() {
-        let json = r#"{"success": true, "message": "ok"}"#;
-        assert_eq!(extract_json_value(json, "success"), Some("true".to_string()));
-    }
-
-    #[test]
-    fn test_extract_json_value_missing() {
-        let json = r#"{"success": true}"#;
-        assert_eq!(extract_json_value(json, "message"), None);
-    }
-
-    #[test]
-    fn test_extract_json_value_with_spaces() {
-        let json = r#"{"success":  true,  "message":  "done"}"#;
-        assert_eq!(extract_json_value(json, "message"), Some("done".to_string()));
+    fn test_placeholder() {
+        // elevate.rs 的核心逻辑依赖 Windows API，无法在 macOS 上测试。
+        // JSON 解析现在用 serde_json，不需要手写解析器测试。
     }
 }
