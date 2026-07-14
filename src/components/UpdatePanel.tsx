@@ -7,10 +7,15 @@ interface UpdatePanelProps {
   state: UpdateState
   enabled: boolean
   onCheck: () => Promise<CheckResult>
+  onShowUpdate: () => void
 }
 
-export function UpdatePanel({ state, enabled, onCheck }: UpdatePanelProps) {
+export function UpdatePanel({ state, enabled, onCheck, onShowUpdate }: UpdatePanelProps) {
   const handleCheck = async () => {
+    if (state.candidate) {
+      onShowUpdate()
+      return
+    }
     const result = await onCheck()
     if (result === "current") {
       toast.success("已是最新版本")
@@ -42,10 +47,10 @@ export function UpdatePanel({ state, enabled, onCheck }: UpdatePanelProps) {
           variant="outline"
           size="sm"
           onClick={handleCheck}
-          disabled={!enabled || state.candidate !== null || state.phase === "checking" || state.phase === "downloading" || state.phase === "installing"}
+          disabled={!enabled || state.phase === "checking" || state.phase === "downloading" || state.phase === "installing"}
         >
           <RefreshCw className={`h-4 w-4 ${state.phase === "checking" ? "animate-spin" : ""}`} />
-          检查更新
+          {state.candidate ? "查看更新" : "检查更新"}
         </Button>
       </div>
       {state.phase === "error" && !state.candidate && state.error && (

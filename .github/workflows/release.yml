@@ -92,3 +92,19 @@ jobs:
           releaseDraft: false
           prerelease: false
           updaterJsonPreferNsis: true
+
+      - name: Verify updater release assets
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $assets = @(gh release view "${{ github.ref_name }}" --json assets --jq '.assets[].name')
+          if ("latest.json" -notin $assets) {
+            throw "Missing updater metadata: latest.json"
+          }
+          if (-not ($assets | Where-Object { $_ -like "*-setup.exe" })) {
+            throw "Missing NSIS setup.exe"
+          }
+          if (-not ($assets | Where-Object { $_ -like "*.sig" })) {
+            throw "Missing updater signature"
+          }

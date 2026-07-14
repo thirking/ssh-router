@@ -132,4 +132,23 @@ mod tests {
 
         fs::remove_dir_all(temp_dir).unwrap();
     }
+
+    #[test]
+    fn reports_unreadable_deployed_cli_as_an_error() {
+        let temp_dir = std::env::temp_dir().join(format!(
+            "ssh-router-cli-sync-unreadable-{}",
+            std::process::id()
+        ));
+        fs::create_dir_all(&temp_dir).unwrap();
+        let bundled = temp_dir.join("bundled.exe");
+        let deployed = temp_dir.join("deployed.exe");
+        fs::create_dir(&deployed).unwrap();
+        let deployed_len = fs::metadata(&deployed).unwrap().len() as usize;
+        fs::write(&bundled, vec![0_u8; deployed_len]).unwrap();
+
+        let error = files_match(&bundled, &deployed).unwrap_err();
+        assert!(error.contains("读取已部署 CLI"));
+
+        fs::remove_dir_all(temp_dir).unwrap();
+    }
 }

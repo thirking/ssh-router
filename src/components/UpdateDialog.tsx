@@ -28,7 +28,7 @@ export function UpdateDialog({ state, onInstall, onDismiss }: UpdateDialogProps)
 
   return (
     <Dialog
-      open={candidate !== null}
+      open={candidate !== null && state.dialogOpen}
       onOpenChange={open => {
         if (!open && !busy) void onDismiss()
       }}

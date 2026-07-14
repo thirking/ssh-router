@@ -24,6 +24,7 @@ export type UpdatePhase = "idle" | "checking" | "available" | "downloading" | "i
 
 export interface UpdateState {
   phase: UpdatePhase
+  dialogOpen: boolean
   currentVersion: string
   candidate: UpdateCandidate | null
   downloadedBytes: number
@@ -43,6 +44,7 @@ const DAY_MS = 24 * 60 * 60 * 1_000
 
 const initialState: UpdateState = {
   phase: "idle",
+  dialogOpen: false,
   currentVersion: "",
   candidate: null,
   downloadedBytes: 0,
@@ -81,6 +83,7 @@ export function useUpdateManager(
         setState(previous => ({
           ...previous,
           phase: "available",
+          dialogOpen: true,
           currentVersion: candidate.currentVersion,
           candidate,
           lastCheckedAt,
@@ -89,7 +92,13 @@ export function useUpdateManager(
       }
 
       candidateRef.current = null
-      setState(previous => ({ ...previous, phase: "idle", candidate: null, lastCheckedAt }))
+      setState(previous => ({
+        ...previous,
+        phase: "idle",
+        dialogOpen: false,
+        candidate: null,
+        lastCheckedAt,
+      }))
       return "current"
     } catch (error) {
       setState(previous => ({
@@ -118,21 +127,17 @@ export function useUpdateManager(
   }, [adapter, checkForUpdates, enabled, intervalMs])
 
   const dismiss = useCallback(async () => {
-    const candidate = state.candidate
-    try {
-      await candidate?.close()
-    } finally {
-      candidateRef.current = null
-      setState(previous => ({
-        ...previous,
-        phase: "idle",
-        candidate: null,
-        downloadedBytes: 0,
-        totalBytes: undefined,
-        error: null,
-      }))
-    }
-  }, [state.candidate])
+    setState(previous => ({
+      ...previous,
+      phase: previous.phase === "error" ? "error" : "available",
+      dialogOpen: false,
+    }))
+  }, [])
+
+  const showAvailable = useCallback(() => {
+    if (!candidateRef.current) return
+    setState(previous => ({ ...previous, dialogOpen: true }))
+  }, [])
 
   const install = useCallback(async () => {
     const candidate = state.candidate
@@ -142,6 +147,7 @@ export function useUpdateManager(
     setState(previous => ({
       ...previous,
       phase: "downloading",
+      dialogOpen: true,
       downloadedBytes: 0,
       totalBytes: undefined,
       error: null,
@@ -180,6 +186,7 @@ export function useUpdateManager(
     state,
     checkNow: () => checkForUpdates(true),
     dismiss,
+    showAvailable,
     install,
   }
 }

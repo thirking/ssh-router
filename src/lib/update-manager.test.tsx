@@ -61,6 +61,25 @@ describe("useUpdateManager", () => {
     expect(result.current.state.error).toBeNull()
   })
 
+  it("手动检查失败时公开错误供界面重试", async () => {
+    const adapter: UpdateAdapter = {
+      getCurrentVersion: vi.fn().mockResolvedValue("0.0.8"),
+      check: vi.fn().mockRejectedValue(new Error("network unavailable")),
+      relaunch: vi.fn().mockResolvedValue(undefined),
+    }
+    const { result } = renderHook(() => useUpdateManager(adapter, { enabled: true }))
+    await act(async () => {})
+
+    let checkResult = ""
+    await act(async () => {
+      checkResult = await result.current.checkNow()
+    })
+
+    expect(checkResult).toBe("error")
+    expect(result.current.state.phase).toBe("error")
+    expect(result.current.state.error).toContain("network unavailable")
+  })
+
   it("发现新版本时公开更新元数据", async () => {
     const update = candidate()
     const adapter: UpdateAdapter = {
@@ -76,7 +95,7 @@ describe("useUpdateManager", () => {
     expect(result.current.state.candidate).toBe(update)
   })
 
-  it("用户选择稍后更新时关闭当前更新资源", async () => {
+  it("用户选择稍后更新时保留待处理状态并允许重新打开", async () => {
     const update = candidate()
     const adapter: UpdateAdapter = {
       getCurrentVersion: vi.fn().mockResolvedValue("0.0.8"),
@@ -90,9 +109,13 @@ describe("useUpdateManager", () => {
       await result.current.dismiss()
     })
 
-    expect(update.close).toHaveBeenCalledOnce()
-    expect(result.current.state.phase).toBe("idle")
-    expect(result.current.state.candidate).toBeNull()
+    expect(update.close).not.toHaveBeenCalled()
+    expect(result.current.state.phase).toBe("available")
+    expect(result.current.state.candidate).toBe(update)
+    expect(result.current.state.dialogOpen).toBe(false)
+
+    act(() => result.current.showAvailable())
+    expect(result.current.state.dialogOpen).toBe(true)
   })
 
   it("下载完成后安装并重启应用", async () => {

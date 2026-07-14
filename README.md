@@ -175,7 +175,7 @@ build.cmd "D:\deploy"
 
 运行 SSH Router（从开始菜单或桌面快捷方式启动），主界面上方有**安装状态**面板和**快捷操作**按钮区：
 
-1. 点击 **「安装 CLI」** — 从安装包释放 CLI 到 `C:\ProgramData\ssh\ssh-router-cli.exe`（会弹出 UAC 提权）
+1. 点击 **「安装/更新 CLI」** — 从安装包释放 CLI 到 `C:\ProgramData\ssh\ssh-router-cli.exe`（会弹出 UAC 提权）
 2. 点击 **「设置 DefaultShell」** — 自动设置注册表 `HKLM:\SOFTWARE\OpenSSH\DefaultShell` 指向 CLI（UAC 提权）
 3. 点击 **「重启 sshd」** — 重启 SSH 服务使配置生效（UAC 提权）
 
@@ -249,6 +249,13 @@ Restart-Service sshd -Force
 - 自动检查网络失败不会影响托盘、路由配置或 SSH 服务
 
 更新包由 Tauri 签名机制验证，更新源固定为本项目的 GitHub Releases 稳定版；草稿和预发布版本不会进入自动更新通道。
+
+### 发布签名维护
+
+- GitHub Actions 必须配置 `TAURI_SIGNING_PRIVATE_KEY` 和 `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` 两个 Secrets
+- 私钥必须使用密码加密，且不得提交到仓库；应用仅包含可公开的验证公钥
+- 发布前必须确认加密私钥及其密码已备份到独立的离线介质；丢失后，现有客户端将无法接受使用新密钥签名的更新
+- Release 工作流会校验版本号，并在发布后确认 `setup.exe`、签名文件和 `latest.json` 均已上传
 
 ## 环境要求
 

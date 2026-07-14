@@ -185,6 +185,7 @@ function App() {
           state={updateManager.state}
           enabled={updatesEnabled}
           onCheck={updateManager.checkNow}
+          onShowUpdate={updateManager.showAvailable}
         />
         <QuickActions onStatusRefresh={refreshStatus} />
 
