@@ -34,27 +34,35 @@ pub fn run_elevated(script: &str) -> Result<String, String> {
     let result_path = result_file_path();
     let _ = fs::remove_file(&result_path);
 
-    // 写实际脚本
+    // 写实际脚本（加 UTF-8 BOM，让 PowerShell 5.1 正确以 UTF-8 读取）
     let script_path = script_file_path();
-    fs::write(&script_path, script).map_err(|e| format!("write script: {}", e))?;
+    let mut script_bytes = Vec::with_capacity(script.len() + 3);
+    script_bytes.extend_from_slice(&[0xEF, 0xBB, 0xBF]);
+    script_bytes.extend_from_slice(script.as_bytes());
+    fs::write(&script_path, &script_bytes).map_err(|e| format!("write script: {}", e))?;
 
     // 写 wrapper 脚本：执行实际脚本，写结果 JSON
+    // 用英文避免 PowerShell 5.1 ANSI 编码读取中文乱码
     let wrapper_script = format!(
         r#"$ErrorActionPreference = "Stop"
 try {{
     & "{script}"
-    $result = @{{ success = $true; message = "操作成功" }} | ConvertTo-Json
+    $result = @{{ success = $true; message = "OK" }} | ConvertTo-Json
 }} catch {{
     $result = @{{ success = $false; message = $_.Exception.Message }} | ConvertTo-Json
 }}
 $result | Out-File -FilePath "{result}" -Encoding UTF8
 "#,
-        script = script_path.to_string_lossy().replace('\\', "\\\\"),
-        result = result_path.to_string_lossy().replace('\\', "\\\\"),
+        script = script_path.to_string_lossy(),
+        result = result_path.to_string_lossy(),
     );
 
     let wrapper_path = wrapper_file_path();
-    fs::write(&wrapper_path, &wrapper_script).map_err(|e| format!("write wrapper: {}", e))?;
+    // 加 UTF-8 BOM，让 PowerShell 5.1 正确以 UTF-8 读取脚本
+    let mut wrapper_bytes = Vec::with_capacity(wrapper_script.len() + 3);
+    wrapper_bytes.extend_from_slice(&[0xEF, 0xBB, 0xBF]);
+    wrapper_bytes.extend_from_slice(wrapper_script.as_bytes());
+    fs::write(&wrapper_path, &wrapper_bytes).map_err(|e| format!("write wrapper: {}", e))?;
 
     // ShellExecuteW runas 启动 PowerShell
     let powershell = to_wide("powershell.exe");

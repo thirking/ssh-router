@@ -69,7 +69,7 @@ fn write_config_elevated(json: &str) -> Result<(), String> {
     // 写 JSON 到临时文件
     let tmp = std::env::temp_dir().join("ssh-router-config-tmp.json");
     fs::write(&tmp, json).map_err(|e| format!("write temp config: {}", e))?;
-    let tmp_path = tmp.to_string_lossy().replace('\\', "\\\\");
+    let tmp_path = tmp.to_string_lossy();
 
     let script = format!(
         r#"$src = "{src}"
@@ -247,7 +247,7 @@ pub async fn install_cli(app: AppHandle) -> Result<String, String> {
             .resource_dir()
             .map_err(|e| format!("get resource dir: {}", e))?;
         let src = resource_dir.join("ssh-router-cli.exe");
-        let src_path = src.to_string_lossy().replace('\\', "\\\\");
+        let src_path = src.to_string_lossy();
 
         let script = format!(
             r#"$src = "{src}"
