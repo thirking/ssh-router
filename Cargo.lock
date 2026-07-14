@@ -3154,7 +3154,7 @@ dependencies = [
 
 [[package]]
 name = "ssh-router"
-version = "0.0.6"
+version = "0.0.7"
 dependencies = [
  "serde",
  "serde_json",
@@ -3168,18 +3168,19 @@ dependencies = [
 
 [[package]]
 name = "ssh-router-cli"
-version = "0.0.6"
+version = "0.0.7"
 dependencies = [
  "chrono",
  "serde",
  "serde_json",
  "ssh-router-config",
+ "uuid",
  "windows",
 ]
 
 [[package]]
 name = "ssh-router-config"
-version = "0.0.6"
+version = "0.0.7"
 dependencies = [
  "serde",
  "serde_json",

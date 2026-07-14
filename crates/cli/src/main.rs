@@ -4,16 +4,30 @@ mod temp;
 mod routing;
 mod win32;
 
-use std::env;
 use std::fs;
-use std::path::PathBuf;
+
+#[cfg(windows)]
+use std::env;
 
 const CONFIG_PATH: &str = r"C:\ProgramData\ssh\ssh-router.json";
 
+fn port_log(port: &str) -> String {
+    format!("port: {}", port)
+}
+
+fn route_log(route: &str) -> String {
+    format!("route: {}", route)
+}
+
 #[cfg(windows)]
 fn main() {
-    let pid = std::process::id();
-    temp::clean_stale_temp_files(pid);
+    let exit_code = run();
+    std::process::exit(exit_code as i32);
+}
+
+#[cfg(windows)]
+fn run() -> u32 {
+    temp::clean_stale_temp_files();
 
     let h_job = win32::create_kill_on_close_job(&log::log);
 
@@ -33,13 +47,9 @@ fn main() {
     let has_command = args.len() >= 3 && args[1] == "-c";
     let command = if has_command { Some(args[2].as_str()) } else { None };
 
-    // 记录调试日志
+    // 仅记录不含远程命令内容的连接信息。
     log::log("========");
-    log::log(&format!("args: {:?}", args));
-    log::log(&format!("port: {}", port));
-    if let Some(cmd) = command {
-        log::log(&format!("command: {}", cmd));
-    }
+    log::log(&port_log(port));
 
     // 读取配置
     let config = match load_config() {
@@ -47,19 +57,20 @@ fn main() {
         Err(e) => {
             log::log(&format!("ERROR: failed to load config: {}", e));
             win32::close_job(h_job.unwrap_or(0));
-            std::process::exit(1);
+            return 1;
         }
     };
 
     // 路由决策
     let cmd_line;
-    let temp_file: Option<PathBuf>;
+    let temp_script: Option<temp::TempScript>;
 
     if let Some(cmd) = command {
         if routing::is_sftp_command(cmd) {
             // SFTP 特殊处理：直接走配置中的 sftp_command
+            log::log(&route_log("SFTP"));
             cmd_line = config.sftp_command.clone();
-            temp_file = None;
+            temp_script = None;
         } else {
             // 有命令：匹配端口 → commandTemplate
             let route = match routing::match_route(&config, port) {
@@ -67,21 +78,24 @@ fn main() {
                 None => {
                     log::log("ERROR: no matching route and no default route");
                     win32::close_job(h_job.unwrap_or(0));
-                    std::process::exit(1);
+                    return 1;
                 }
             };
+            log::log(&route_log(&route.name));
 
             // 写命令到临时文件，避免 shell quoting 破坏复杂脚本
             // (多行脚本、here-document、嵌套引号、sh -c 等)
             let ext = &route.tmp_file_ext;
-            let tmp_path = env::temp_dir().join(format!("ssh-cmd-{}{}", pid, ext));
-            if let Err(e) = fs::write(&tmp_path, cmd) {
-                log::log(&format!("ERROR: failed to create temp file: {}", e));
-                win32::close_job(h_job.unwrap_or(0));
-                std::process::exit(1);
-            }
+            let script = match temp::TempScript::create(ext, cmd) {
+                Ok(script) => script,
+                Err(e) => {
+                    log::log(&format!("ERROR: failed to create temp file: {}", e));
+                    win32::close_job(h_job.unwrap_or(0));
+                    return 1;
+                }
+            };
 
-            let tmp_str = tmp_path.to_string_lossy().to_string();
+            let tmp_str = script.path().to_string_lossy().to_string();
             let tmp_wsl = wsl::to_wsl_path(&tmp_str);
 
             let needs_wsl = route.command_template.contains("{tmpfile_wsl}");
@@ -93,7 +107,7 @@ fn main() {
                 Some(tmp_str.as_str()),
                 tmpfile_wsl,
             );
-            temp_file = Some(tmp_path);
+            temp_script = Some(script);
         }
     } else {
         // 无命令（交互式）：匹配端口 → interactiveTemplate
@@ -102,9 +116,10 @@ fn main() {
             None => {
                 log::log("ERROR: no matching route and no default route");
                 win32::close_job(h_job.unwrap_or(0));
-                std::process::exit(1);
+                return 1;
             }
         };
+        log::log(&route_log(&route.name));
 
         cmd_line = routing::render_template(
             &route.interactive_template,
@@ -112,18 +127,11 @@ fn main() {
             None,
             None,
         );
-        temp_file = None;
+        temp_script = None;
     }
-
-    log::log(&format!("cmdLine: {}", cmd_line));
 
     // 启动子进程并等待其退出（CreateProcessW + Job Object，详见 win32 模块）
     let exit_code = win32::launch_and_wait(&cmd_line, h_job.unwrap_or(0), &log::log);
-
-    // 清理临时文件
-    if let Some(tf) = &temp_file {
-        let _ = fs::remove_file(tf);
-    }
 
     // 关闭 Job Object（触发 KILL_ON_JOB_CLOSE，回收所有子进程）
     win32::close_job(h_job.unwrap_or(0));
@@ -131,7 +139,8 @@ fn main() {
     log::log(&format!("exit code: {}", exit_code));
     log::log("========");
 
-    std::process::exit(exit_code as i32);
+    drop(temp_script);
+    exit_code
 }
 
 #[cfg(not(windows))]
@@ -149,4 +158,16 @@ fn load_config() -> Result<ssh_router_config::Config, String> {
         .map_err(|e| format!("read config: {}", e))?;
     serde_json::from_str(&content)
         .map_err(|e| format!("parse config: {}", e))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn connection_detail_logs_only_include_port_and_route() {
+        let messages = [port_log("2222"), route_log("Git Bash")];
+
+        assert_eq!(messages, ["port: 2222", "route: Git Bash"]);
+    }
 }

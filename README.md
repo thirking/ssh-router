@@ -257,19 +257,18 @@ Restart-Service sshd -Force
 
 ### 查看调试日志
 
-所有连接的命令和执行信息记录在 `C:\ProgramData\ssh\ssh-router-debug.log`，格式如下：
+连接端口、匹配路由、错误和退出码记录在 `C:\ProgramData\ssh\ssh-router-debug.log`。
+日志默认不记录远程命令、完整参数或最终命令行，格式如下：
 
 ```text
 2026-07-08 12:00:00.000 ========
-2026-07-08 12:00:00.000 args: "-c", "uname -s"
 2026-07-08 12:00:00.000 port: 2222
-2026-07-08 12:00:00.000 command: uname -s
-2026-07-08 12:00:00.000 cmdLine: "C:\Program Files\Git\usr\bin\bash.exe" -l "C:\...\ssh-cmd-1234.sh"
+2026-07-08 12:00:00.000 route: Git Bash
 2026-07-08 12:00:00.000 exit code: 0
 2026-07-08 12:00:00.000 ========
 ```
 
-如果 Remote SSH 工具报错，先查看日志确认实际收到的命令内容。日志由 `crates/cli/src/log.rs` 写入。
+如果 Remote SSH 工具报错，先查看日志确认端口、匹配路由和系统错误。日志由 `crates/cli/src/log.rs` 写入。
 
 ### zcode 连接卡住 / 转圈
 
