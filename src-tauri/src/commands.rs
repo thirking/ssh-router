@@ -14,8 +14,8 @@ pub fn load_config() -> Result<Config, String> {
 
 /// 校验并持久化配置：必须恰好有一条默认路由
 #[tauri::command]
-pub fn save_config(config: Config) -> Result<(), String> {
-    // 校验恰好一条 default
+pub async fn save_config(config: Config) -> Result<(), String> {
+    // 校验恰好有一条 default
     let defaults: Vec<_> = config.routes.iter().filter(|r| r.default).collect();
     if defaults.len() != 1 {
         return Err(format!(
@@ -24,24 +24,69 @@ pub fn save_config(config: Config) -> Result<(), String> {
         ));
     }
     let json = serde_json::to_string_pretty(&config).map_err(|e| format!("serialize config: {}", e))?;
-    // 确保目录存在（与 create_default_config 一致）
-    if let Some(parent) = Path::new(CONFIG_PATH).parent() {
-        fs::create_dir_all(parent).map_err(|e| format!("create dir: {}", e))?;
+
+    #[cfg(target_os = "windows")]
+    {
+        write_config_elevated(&json)?;
+        Ok(())
     }
-    fs::write(CONFIG_PATH, json).map_err(|e| format!("write config: {}", e))
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = json;
+        Err("Save config is only available on Windows".to_string())
+    }
 }
 
 /// 创建默认配置并写入磁盘（若目录不存在则创建）
 #[tauri::command]
-pub fn create_default_config() -> Result<Config, String> {
+pub async fn create_default_config() -> Result<Config, String> {
     let config = Config::default_config();
     let json = serde_json::to_string_pretty(&config).map_err(|e| format!("serialize config: {}", e))?;
-    // 确保目录存在
-    if let Some(parent) = Path::new(CONFIG_PATH).parent() {
-        fs::create_dir_all(parent).map_err(|e| format!("create dir: {}", e))?;
+
+    #[cfg(target_os = "windows")]
+    {
+        write_config_elevated(&json)?;
     }
-    fs::write(CONFIG_PATH, json).map_err(|e| format!("write config: {}", e))?;
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = json;
+        return Err("Create default config is only available on Windows".to_string());
+    }
+
     Ok(config)
+}
+
+/// 通过 UAC 提权将配置 JSON 写入 C:\ProgramData\ssh\ssh-router.json
+///
+/// 先写到临时文件，再用提权的 PowerShell 复制到目标路径，
+/// 避免在 PowerShell 脚本中嵌入大段 JSON（转义问题）。
+#[cfg(target_os = "windows")]
+fn write_config_elevated(json: &str) -> Result<(), String> {
+    use tauri::async_runtime::spawn_blocking;
+
+    // 写 JSON 到临时文件
+    let tmp = std::env::temp_dir().join("ssh-router-config-tmp.json");
+    fs::write(&tmp, json).map_err(|e| format!("write temp config: {}", e))?;
+    let tmp_path = tmp.to_string_lossy().replace('\\', "\\\\");
+
+    let script = format!(
+        r#"$src = "{src}"
+$dst = "C:\ProgramData\ssh\ssh-router.json"
+if (-not (Test-Path "C:\ProgramData\ssh")) {{
+    New-Item -ItemType Directory -Path "C:\ProgramData\ssh" -Force
+}}
+Copy-Item $src $dst -Force
+Remove-Item $src -Force
+"#,
+        src = tmp_path,
+    );
+
+    spawn_blocking(move || crate::elevate::run_elevated(&script))
+        .await
+        .map_err(|e| format!("spawn_blocking join: {}", e))?
+        .map(|_| ())
 }
 
 use serde::Serialize;
