@@ -27,7 +27,7 @@ pub enum AppError {
 pub enum ConfigError {
     #[error("配置文件不存在: {path}")]
     NotFound { path: PathBuf },
-    #[error("读取配置失败: {path}")]
+    #[error("读取配置失败: {path}: {source}")]
     Read {
         path: PathBuf,
         #[source]
@@ -37,11 +37,19 @@ pub enum ConfigError {
     InvalidFormat { message: String },
     #[error("配置校验失败: {message}")]
     Validation { message: String },
-    #[error("保存配置失败: {path}")]
+    #[error("保存配置失败: {path}: {source}")]
     Write {
         path: PathBuf,
         #[source]
         source: io::Error,
+    },
+    #[error(
+        "操作失败后清理临时配置也失败: {path}; 操作错误: {operation_error}; 清理错误: {cleanup_error}"
+    )]
+    CleanupAfterFailure {
+        path: PathBuf,
+        operation_error: String,
+        cleanup_error: String,
     },
 }
 

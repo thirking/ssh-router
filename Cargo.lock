@@ -6018,6 +6018,7 @@ dependencies = [
  "serde_json",
  "ssh-router-config",
  "thiserror 2.0.18",
+ "windows",
 ]
 
 [[package]]

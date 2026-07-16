@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use ssh_router_config::{validate_config, Config};
+use ssh_router_config::{normalize_legacy_config, validate_config, Config};
 
 use crate::error::{AppError, AppResult, ConfigError};
 use crate::platform::{ElevationProvider, FileSystem};
@@ -57,10 +57,11 @@ where
         }
 
         let contents = self.platform.read(&self.config_path)?;
-        let config: Config =
+        let mut config: Config =
             serde_json::from_slice(&contents).map_err(|error| ConfigError::InvalidFormat {
                 message: error.to_string(),
             })?;
+        normalize_legacy_config(&mut config);
         validate_config(&config).map_err(|error| ConfigError::Validation {
             message: error.to_string(),
         })?;
@@ -107,7 +108,13 @@ where
         let cleanup_result = self.platform.remove_file(&temporary_path);
 
         match (elevated_result, cleanup_result) {
-            (Err(error), _) => Err(error),
+            (Err(operation_error), Err(cleanup_error)) => Err(ConfigError::CleanupAfterFailure {
+                path: temporary_path,
+                operation_error: operation_error.to_string(),
+                cleanup_error: cleanup_error.to_string(),
+            }
+            .into()),
+            (Err(error), Ok(())) => Err(error),
             (Ok(()), Err(error)) => Err(error),
             (Ok(()), Ok(())) => Ok(()),
         }
@@ -139,10 +146,21 @@ $dstDir = '{destination_directory}'
 if (-not (Test-Path -LiteralPath $dstDir)) {{
     New-Item -ItemType Directory -Path $dstDir -Force | Out-Null
 }}
-Copy-Item -LiteralPath $src -Destination $dst -Force
-Remove-Item -LiteralPath $src -Force -ErrorAction SilentlyContinue
-icacls $dst /reset | Out-Null
-icacls $dst /grant 'SYSTEM:(R)' 'Administrators:(F)' 'Users:(R)' | Out-Null
+$staged = Join-Path $dstDir ('.ssh-router-' + [Guid]::NewGuid().ToString('N') + '.json.tmp')
+try {{
+    Copy-Item -LiteralPath $src -Destination $staged -Force
+    if (Test-Path -LiteralPath $dst) {{
+        [System.IO.File]::Replace($staged, $dst, $null, $true)
+    }} else {{
+        [System.IO.File]::Move($staged, $dst)
+    }}
+    & icacls $dst /reset | Out-Null
+    if ($LASTEXITCODE -ne 0) {{ throw "icacls reset failed: $LASTEXITCODE" }}
+    & icacls $dst /grant 'SYSTEM:(R)' 'Administrators:(F)' 'Users:(R)' | Out-Null
+    if ($LASTEXITCODE -ne 0) {{ throw "icacls grant failed: $LASTEXITCODE" }}
+}} finally {{
+    if (Test-Path -LiteralPath $staged) {{ Remove-Item -LiteralPath $staged -Force }}
+}}
 "#
     ))
 }
@@ -165,6 +183,7 @@ mod tests {
         elevated_scripts: Mutex<Vec<String>>,
         deny_direct_write: bool,
         fail_elevation: bool,
+        fail_cleanup: bool,
     }
 
     impl FileSystem for FakePlatform {
@@ -202,6 +221,13 @@ mod tests {
         }
 
         fn remove_file(&self, path: &Path) -> AppResult<()> {
+            if self.fail_cleanup {
+                return Err(ConfigError::Write {
+                    path: path.to_path_buf(),
+                    source: io::Error::other("cleanup failed"),
+                }
+                .into());
+            }
             self.files.lock().expect("锁应可用").remove(path);
             Ok(())
         }
@@ -283,6 +309,28 @@ mod tests {
             error,
             AppError::Config(ConfigError::Validation { .. })
         ));
+    }
+
+    #[test]
+    fn normalizes_loaded_legacy_config() {
+        let platform = FakePlatform::default();
+        let mut config = Config::default_config();
+        for route in &mut config.routes {
+            route.default = false;
+        }
+        platform.files.lock().expect("锁应可用").insert(
+            PathBuf::from("config.json"),
+            serde_json::to_vec(&config).expect("测试配置应可序列化"),
+        );
+        let repository = ConfigService::with_paths(platform, "config.json", "temp");
+
+        let loaded = repository.load().expect("旧配置应可加载");
+
+        assert!(loaded.routes[0].default);
+        assert_eq!(
+            loaded.routes.iter().filter(|route| route.default).count(),
+            1
+        );
     }
 
     #[test]
@@ -370,6 +418,29 @@ mod tests {
             .lock()
             .expect("锁应可用")
             .is_empty());
+    }
+
+    #[test]
+    fn reports_operation_and_cleanup_errors_together() {
+        let platform = FakePlatform {
+            deny_direct_write: true,
+            fail_elevation: true,
+            fail_cleanup: true,
+            ..Default::default()
+        };
+        let repository = ConfigService::with_paths(platform, "/protected/config.json", "/temp");
+
+        let error = repository
+            .save(&Config::default_config())
+            .expect_err("双重失败应返回错误");
+
+        assert!(matches!(
+            error,
+            AppError::Config(ConfigError::CleanupAfterFailure { .. })
+        ));
+        let message = error.to_string();
+        assert!(message.contains("elevation failed"));
+        assert!(message.contains("cleanup failed"));
     }
 
     #[test]

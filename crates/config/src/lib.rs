@@ -87,6 +87,16 @@ pub fn validate_config(config: &Config) -> Result<(), ConfigValidationError> {
     Ok(())
 }
 
+/// 兼容早期没有 `default` 字段的配置：零条默认路由时使用第一条作为默认。
+/// 多条默认路由仍由校验器拒绝，避免掩盖真实冲突。
+pub fn normalize_legacy_config(config: &mut Config) -> bool {
+    if !config.routes.is_empty() && config.routes.iter().all(|route| !route.default) {
+        config.routes[0].default = true;
+        return true;
+    }
+    false
+}
+
 fn validate_required_field(
     route_index: usize,
     field: &'static str,
@@ -293,5 +303,29 @@ mod tests {
             validate_config(&config),
             Err(ConfigValidationError::EmptySftpCommand)
         );
+    }
+
+    #[test]
+    fn normalizes_legacy_config_without_default_field() {
+        let mut config = Config::default_config();
+        for route in &mut config.routes {
+            route.default = false;
+        }
+
+        assert!(normalize_legacy_config(&mut config));
+        assert!(config.routes[0].default);
+        assert_eq!(
+            config.routes.iter().filter(|route| route.default).count(),
+            1
+        );
+    }
+
+    #[test]
+    fn does_not_change_config_with_existing_default() {
+        let mut config = Config::default_config();
+        let original = config.clone();
+
+        assert!(!normalize_legacy_config(&mut config));
+        assert_eq!(config, original);
     }
 }
