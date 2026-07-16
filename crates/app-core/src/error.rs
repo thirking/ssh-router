@@ -53,7 +53,7 @@ pub enum ConfigError {
     },
 }
 
-#[derive(Debug, Error, PartialEq, Eq)]
+#[derive(Clone, Debug, Error, PartialEq, Eq)]
 pub enum PermissionError {
     #[error("用户取消了管理员权限操作")]
     Cancelled,

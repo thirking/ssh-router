@@ -5,20 +5,24 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant, SystemTime};
 
-use windows::core::PCWSTR;
-use windows::Win32::Foundation::ERROR_FILE_NOT_FOUND;
+use windows::core::{HRESULT, PCWSTR};
+use windows::Win32::Foundation::{ERROR_FILE_NOT_FOUND, ERROR_SERVICE_DOES_NOT_EXIST};
 use windows::Win32::Storage::FileSystem::{
     MoveFileExW, MOVEFILE_REPLACE_EXISTING, MOVEFILE_WRITE_THROUGH,
 };
 use windows::Win32::System::Registry::{RegGetValueW, HKEY_LOCAL_MACHINE, RRF_RT_REG_SZ};
 use windows::Win32::System::Services::{
-    CloseServiceHandle, OpenSCManagerW, OpenServiceW, QueryServiceStatus, SC_MANAGER_CONNECT,
-    SERVICE_QUERY_STATUS, SERVICE_RUNNING, SERVICE_STATUS,
+    CloseServiceHandle, OpenSCManagerW, OpenServiceW, QueryServiceStatus, SC_HANDLE,
+    SC_MANAGER_CONNECT, SERVICE_CONTINUE_PENDING, SERVICE_PAUSED, SERVICE_PAUSE_PENDING,
+    SERVICE_QUERY_STATUS, SERVICE_RUNNING, SERVICE_START_PENDING, SERVICE_STATUS, SERVICE_STOPPED,
+    SERVICE_STOP_PENDING,
 };
 use windows::Win32::UI::Shell::ShellExecuteW;
 use windows::Win32::UI::WindowsAndMessaging::SW_HIDE;
 
-use crate::error::{AppResult, ConfigError, PermissionError, RegistryError, ServiceError};
+use crate::error::{
+    AppError, AppResult, ConfigError, PermissionError, RegistryError, ServiceError,
+};
 use crate::platform::{
     ElevationProvider, FileSystem, RegistryProvider, ResourceProvider, ServiceProvider,
     ServiceStatus,
@@ -206,7 +210,18 @@ impl RegistryProvider for WindowsPlatform {
         let data = powershell_string(data);
         let script =
             format!("Set-ItemProperty -Path 'HKLM:\\{key}' -Name '{value}' -Value '{data}'\n");
-        self.run_script(&script).map(|_| ())
+        match self.run_script(&script) {
+            Ok(_) => Ok(()),
+            Err(AppError::Permission(PermissionError::Cancelled)) => {
+                Err(PermissionError::Cancelled.into())
+            }
+            Err(error) => Err(RegistryError::Write {
+                key: key.to_string(),
+                value: value.to_string(),
+                message: error.to_string(),
+            }
+            .into()),
+        }
     }
 }
 
@@ -220,50 +235,44 @@ impl ServiceProvider for WindowsPlatform {
                     message: error.to_string(),
                 }
             })?;
-            let service_result =
-                OpenServiceW(manager, PCWSTR(service_name.as_ptr()), SERVICE_QUERY_STATUS);
-            let manager_close = CloseServiceHandle(manager);
-            if let Err(error) = manager_close {
-                return Err(ServiceError::Query {
-                    name: name.to_string(),
-                    message: format!("关闭服务管理器失败: {error}"),
-                }
-                .into());
-            }
-            let service = match service_result {
-                Ok(service) => service,
-                Err(_) => {
-                    return Err(ServiceError::NotFound {
-                        name: name.to_string(),
-                    }
-                    .into());
-                }
-            };
+            let manager = OwnedServiceHandle::new(manager);
+            let service = OpenServiceW(
+                manager.raw(),
+                PCWSTR(service_name.as_ptr()),
+                SERVICE_QUERY_STATUS,
+            )
+            .map_err(|error| map_open_service_error(name, error))?;
+            let service = OwnedServiceHandle::new(service);
 
             let mut status = SERVICE_STATUS::default();
-            let query_result = QueryServiceStatus(service, &mut status);
-            let close_result = CloseServiceHandle(service);
-            query_result.map_err(|error| ServiceError::Query {
-                name: name.to_string(),
-                message: error.to_string(),
-            })?;
-            close_result.map_err(|error| ServiceError::Query {
-                name: name.to_string(),
-                message: format!("关闭服务句柄失败: {error}"),
+            QueryServiceStatus(service.raw(), &mut status).map_err(|error| {
+                ServiceError::Query {
+                    name: name.to_string(),
+                    message: error.to_string(),
+                }
             })?;
 
             let running = status.dwCurrentState == SERVICE_RUNNING;
             Ok(ServiceStatus {
                 running,
-                detail: if running { "Running" } else { "Stopped" }.to_string(),
+                detail: service_state_name(status.dwCurrentState).to_string(),
             })
         }
     }
 
     fn restart_elevated(&self, name: &str) -> AppResult<()> {
         let name = powershell_string(name);
-        self.run_script(&format!("Restart-Service -Name '{name}' -Force\n"))
-            .map(|_| ())
+        match self.run_script(&format!("Restart-Service -Name '{name}' -Force\n")) {
+            Ok(_) => Ok(()),
+            Err(AppError::Permission(PermissionError::Cancelled)) => {
+                Err(PermissionError::Cancelled.into())
+            }
+            Err(error) => Err(ServiceError::Restart {
+                name: name.to_string(),
+                message: error.to_string(),
+            }
+            .into()),
+        }
     }
 }
 
@@ -293,6 +302,54 @@ fn unique_id() -> u64 {
         .unwrap_or_default()
         .as_nanos() as u64;
     timestamp ^ (std::process::id() as u64) ^ UNIQUE_SEQUENCE.fetch_add(1, Ordering::Relaxed)
+}
+
+struct OwnedServiceHandle(SC_HANDLE);
+
+impl OwnedServiceHandle {
+    fn new(handle: SC_HANDLE) -> Self {
+        Self(handle)
+    }
+
+    fn raw(&self) -> SC_HANDLE {
+        self.0
+    }
+}
+
+impl Drop for OwnedServiceHandle {
+    fn drop(&mut self) {
+        unsafe {
+            drop(CloseServiceHandle(self.0));
+        }
+    }
+}
+
+fn map_open_service_error(name: &str, error: windows::core::Error) -> AppError {
+    if error.code() == HRESULT::from_win32(ERROR_SERVICE_DOES_NOT_EXIST.0) {
+        ServiceError::NotFound {
+            name: name.to_string(),
+        }
+        .into()
+    } else {
+        ServiceError::Query {
+            name: name.to_string(),
+            message: error.to_string(),
+        }
+        .into()
+    }
+}
+
+fn service_state_name(state: u32) -> &'static str {
+    match state {
+        SERVICE_STOPPED => "Stopped",
+        SERVICE_START_PENDING => "Start pending",
+        SERVICE_STOP_PENDING => "Stop pending",
+        SERVICE_RUNNING => "Running",
+        SERVICE_CONTINUE_PENDING => "Continue pending",
+        SERVICE_PAUSE_PENDING => "Pause pending",
+        SERVICE_PAUSED => "Paused",
+        _ => "Unknown",
+    }
 }
 
 fn unique_sibling_path(path: &Path) -> PathBuf {
@@ -347,6 +404,10 @@ fn shell_execute_elevated(wrapper_path: &Path) -> AppResult<()> {
         )
     };
     let code = result.0 as usize;
+    map_shell_execute_code(code)
+}
+
+fn map_shell_execute_code(code: usize) -> AppResult<()> {
     if code > 32 {
         return Ok(());
     }
@@ -470,5 +531,51 @@ fn combine_with_cleanup(error: crate::error::AppError, paths: &[&Path]) -> crate
             message: format!("{error}; cleanup: {cleanup_error}"),
         }
         .into(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn maps_only_missing_service_to_not_found() {
+        let missing =
+            windows::core::Error::from_hresult(HRESULT::from_win32(ERROR_SERVICE_DOES_NOT_EXIST.0));
+        let denied = windows::core::Error::from_hresult(HRESULT::from_win32(5));
+
+        assert!(matches!(
+            map_open_service_error("sshd", missing),
+            AppError::Service(ServiceError::NotFound { .. })
+        ));
+        assert!(matches!(
+            map_open_service_error("sshd", denied),
+            AppError::Service(ServiceError::Query { .. })
+        ));
+    }
+
+    #[test]
+    fn preserves_pending_and_paused_service_states() {
+        assert_eq!(service_state_name(SERVICE_START_PENDING), "Start pending");
+        assert_eq!(service_state_name(SERVICE_STOP_PENDING), "Stop pending");
+        assert_eq!(service_state_name(SERVICE_PAUSED), "Paused");
+    }
+
+    #[test]
+    fn maps_access_denied_to_uac_cancellation() {
+        assert!(matches!(
+            map_shell_execute_code(5),
+            Err(AppError::Permission(PermissionError::Cancelled))
+        ));
+    }
+
+    #[test]
+    fn generates_unique_temporary_paths() {
+        let destination = Path::new(r"C:\ProgramData\ssh\ssh-router.json");
+
+        assert_ne!(
+            unique_sibling_path(destination),
+            unique_sibling_path(destination)
+        );
     }
 }
