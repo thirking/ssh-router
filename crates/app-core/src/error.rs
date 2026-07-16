@@ -98,6 +98,8 @@ pub enum ServiceError {
 
 #[derive(Debug, Error)]
 pub enum UpdateError {
+    #[error("获取更新信息失败: {message}")]
+    Network { message: String },
     #[error("更新元数据无效: {message}")]
     InvalidManifest { message: String },
     #[error("更新签名验证失败: {message}")]
@@ -112,6 +114,12 @@ pub enum UpdateError {
 pub enum PlatformError {
     #[error("当前平台不支持此操作: {operation}")]
     Unsupported { operation: String },
+    #[error("单实例初始化失败: {message}")]
+    SingleInstance { message: String },
+    #[error("托盘初始化失败: {message}")]
+    Tray { message: String },
+    #[error("窗口初始化失败: {message}")]
+    WindowInitialization { message: String },
     #[error("平台操作失败: {message}")]
     Operation { message: String },
 }
@@ -158,5 +166,35 @@ mod tests {
                 message: "拒绝访问".to_string(),
             }
         );
+    }
+
+    #[test]
+    fn keeps_ui_relevant_platform_failures_distinct() {
+        let single_instance = PlatformError::SingleInstance {
+            message: "互斥量已损坏".to_string(),
+        };
+        let tray = PlatformError::Tray {
+            message: "图标加载失败".to_string(),
+        };
+        let window = PlatformError::WindowInitialization {
+            message: "DirectX 初始化失败".to_string(),
+        };
+
+        assert!(single_instance.to_string().starts_with("单实例初始化失败"));
+        assert!(tray.to_string().starts_with("托盘初始化失败"));
+        assert!(window.to_string().starts_with("窗口初始化失败"));
+    }
+
+    #[test]
+    fn distinguishes_network_and_manifest_update_failures() {
+        let network = UpdateError::Network {
+            message: "连接超时".to_string(),
+        };
+        let manifest = UpdateError::InvalidManifest {
+            message: "缺少版本号".to_string(),
+        };
+
+        assert!(network.to_string().starts_with("获取更新信息失败"));
+        assert!(manifest.to_string().starts_with("更新元数据无效"));
     }
 }

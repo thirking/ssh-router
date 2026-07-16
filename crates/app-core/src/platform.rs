@@ -12,7 +12,7 @@ pub struct ServiceStatus {
 }
 
 pub trait FileSystem: Send + Sync {
-    fn exists(&self, path: &Path) -> bool;
+    fn exists(&self, path: &Path) -> AppResult<bool>;
     fn read(&self, path: &Path) -> AppResult<Vec<u8>>;
     fn write_atomic(&self, path: &Path, contents: &[u8]) -> AppResult<()>;
 }
