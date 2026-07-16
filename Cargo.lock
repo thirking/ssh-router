@@ -6012,6 +6012,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "ssh-router-app-core"
+version = "0.0.8"
+dependencies = [
+ "thiserror 2.0.18",
+]
+
+[[package]]
 name = "ssh-router-cli"
 version = "0.0.8"
 dependencies = [

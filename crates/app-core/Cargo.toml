@@ -1,0 +1,10 @@
+[package]
+name = "ssh-router-app-core"
+version = "0.0.8"
+edition = "2021"
+
+[lib]
+path = "src/app_core.rs"
+
+[dependencies]
+thiserror = "2"

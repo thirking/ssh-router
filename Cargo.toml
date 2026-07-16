@@ -3,6 +3,13 @@
 #   - crates/cli     (Task 2)
 #   - src-tauri      (Task 7, 本任务)
 #   - crates/gpui-app (GPUI 原生 GUI 重写)
+#   - crates/app-core (桌面业务核心)
 [workspace]
-members = ["crates/config", "crates/cli", "crates/gpui-app", "src-tauri"]
+members = [
+    "crates/config",
+    "crates/cli",
+    "crates/app-core",
+    "crates/gpui-app",
+    "src-tauri",
+]
 resolver = "2"
