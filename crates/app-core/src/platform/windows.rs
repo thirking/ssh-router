@@ -6,14 +6,23 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant, SystemTime};
 
 use windows::core::PCWSTR;
+use windows::Win32::Foundation::ERROR_FILE_NOT_FOUND;
 use windows::Win32::Storage::FileSystem::{
     MoveFileExW, MOVEFILE_REPLACE_EXISTING, MOVEFILE_WRITE_THROUGH,
+};
+use windows::Win32::System::Registry::{RegGetValueW, HKEY_LOCAL_MACHINE, RRF_RT_REG_SZ};
+use windows::Win32::System::Services::{
+    CloseServiceHandle, OpenSCManagerW, OpenServiceW, QueryServiceStatus, SC_MANAGER_CONNECT,
+    SERVICE_QUERY_STATUS, SERVICE_RUNNING, SERVICE_STATUS,
 };
 use windows::Win32::UI::Shell::ShellExecuteW;
 use windows::Win32::UI::WindowsAndMessaging::SW_HIDE;
 
-use crate::error::{AppResult, ConfigError, PermissionError};
-use crate::platform::{ElevationProvider, FileSystem};
+use crate::error::{AppResult, ConfigError, PermissionError, RegistryError, ServiceError};
+use crate::platform::{
+    ElevationProvider, FileSystem, RegistryProvider, ResourceProvider, ServiceProvider,
+    ServiceStatus,
+};
 
 const ELEVATION_TIMEOUT: Duration = Duration::from_secs(30);
 const POLL_INTERVAL: Duration = Duration::from_millis(250);
@@ -155,6 +164,126 @@ impl ElevationProvider for WindowsPlatform {
             .into()),
             (Ok(message), Ok(())) => Ok(message),
         }
+    }
+}
+
+impl RegistryProvider for WindowsPlatform {
+    fn read_string(&self, key: &str, value: &str) -> AppResult<Option<String>> {
+        let key_wide = to_wide(std::ffi::OsStr::new(key));
+        let value_wide = to_wide(std::ffi::OsStr::new(value));
+        let mut buffer = vec![0_u16; 1024];
+        let mut byte_length = (buffer.len() * std::mem::size_of::<u16>()) as u32;
+        let result = unsafe {
+            RegGetValueW(
+                HKEY_LOCAL_MACHINE,
+                PCWSTR(key_wide.as_ptr()),
+                PCWSTR(value_wide.as_ptr()),
+                RRF_RT_REG_SZ,
+                None,
+                Some(buffer.as_mut_ptr().cast()),
+                Some(&mut byte_length),
+            )
+        };
+        if result == ERROR_FILE_NOT_FOUND {
+            return Ok(None);
+        }
+        result.ok().map_err(|_| RegistryError::Read {
+            key: key.to_string(),
+            value: value.to_string(),
+            source: io::Error::from_raw_os_error(result.0 as i32),
+        })?;
+
+        let char_length = (byte_length as usize / std::mem::size_of::<u16>()).min(buffer.len());
+        let string = String::from_utf16_lossy(&buffer[..char_length])
+            .trim_end_matches('\0')
+            .to_string();
+        Ok(Some(string))
+    }
+
+    fn write_string_elevated(&self, key: &str, value: &str, data: &str) -> AppResult<()> {
+        let key = powershell_string(key);
+        let value = powershell_string(value);
+        let data = powershell_string(data);
+        let script =
+            format!("Set-ItemProperty -Path 'HKLM:\\{key}' -Name '{value}' -Value '{data}'\n");
+        self.run_script(&script).map(|_| ())
+    }
+}
+
+impl ServiceProvider for WindowsPlatform {
+    fn query(&self, name: &str) -> AppResult<ServiceStatus> {
+        let service_name = to_wide(std::ffi::OsStr::new(name));
+        unsafe {
+            let manager = OpenSCManagerW(None, None, SC_MANAGER_CONNECT).map_err(|error| {
+                ServiceError::Query {
+                    name: name.to_string(),
+                    message: error.to_string(),
+                }
+            })?;
+            let service_result =
+                OpenServiceW(manager, PCWSTR(service_name.as_ptr()), SERVICE_QUERY_STATUS);
+            let manager_close = CloseServiceHandle(manager);
+            if let Err(error) = manager_close {
+                return Err(ServiceError::Query {
+                    name: name.to_string(),
+                    message: format!("关闭服务管理器失败: {error}"),
+                }
+                .into());
+            }
+            let service = match service_result {
+                Ok(service) => service,
+                Err(_) => {
+                    return Err(ServiceError::NotFound {
+                        name: name.to_string(),
+                    }
+                    .into());
+                }
+            };
+
+            let mut status = SERVICE_STATUS::default();
+            let query_result = QueryServiceStatus(service, &mut status);
+            let close_result = CloseServiceHandle(service);
+            query_result.map_err(|error| ServiceError::Query {
+                name: name.to_string(),
+                message: error.to_string(),
+            })?;
+            close_result.map_err(|error| ServiceError::Query {
+                name: name.to_string(),
+                message: format!("关闭服务句柄失败: {error}"),
+            })?;
+
+            let running = status.dwCurrentState == SERVICE_RUNNING;
+            Ok(ServiceStatus {
+                running,
+                detail: if running { "Running" } else { "Stopped" }.to_string(),
+            })
+        }
+    }
+
+    fn restart_elevated(&self, name: &str) -> AppResult<()> {
+        let name = powershell_string(name);
+        self.run_script(&format!("Restart-Service -Name '{name}' -Force\n"))
+            .map(|_| ())
+    }
+}
+
+impl ResourceProvider for WindowsPlatform {
+    fn bundled_cli_path(&self) -> AppResult<PathBuf> {
+        let executable =
+            std::env::current_exe().map_err(|error| crate::error::PlatformError::Operation {
+                message: format!("获取应用路径失败: {error}"),
+            })?;
+        let directory =
+            executable
+                .parent()
+                .ok_or_else(|| crate::error::PlatformError::Operation {
+                    message: format!("应用路径缺少父目录: {}", executable.display()),
+                })?;
+        Ok(directory.join("resources").join("ssh-router-cli.exe"))
+    }
+
+    fn application_version(&self) -> AppResult<String> {
+        Ok(env!("CARGO_PKG_VERSION").to_string())
     }
 }
 
@@ -300,6 +429,10 @@ $result | Out-File -LiteralPath '{}' -Encoding UTF8
 
 fn powershell_literal(path: &Path) -> String {
     path.to_string_lossy().replace('\'', "''")
+}
+
+fn powershell_string(value: &str) -> String {
+    value.replace('\'', "''")
 }
 
 fn to_wide(value: &std::ffi::OsStr) -> Vec<u16> {
