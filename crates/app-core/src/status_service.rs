@@ -105,7 +105,18 @@ where
             return Err(CliError::BundledCliMissing { path: source }.into());
         }
         let script = install_cli_script(&source, &self.cli_deploy_path)?;
-        self.platform.run_script(&script)?;
+        match self.platform.run_script(&script) {
+            Ok(_) => {}
+            Err(AppError::Permission(crate::error::PermissionError::Cancelled)) => {
+                return Err(crate::error::PermissionError::Cancelled.into());
+            }
+            Err(error) => {
+                return Err(CliError::Deploy {
+                    message: error.to_string(),
+                }
+                .into());
+            }
+        }
         Ok(OperationMessage {
             message: "CLI 安装或更新完成".to_string(),
         })

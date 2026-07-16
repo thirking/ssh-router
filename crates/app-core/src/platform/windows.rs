@@ -6,7 +6,9 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant, SystemTime};
 
 use windows::core::{HRESULT, PCWSTR};
-use windows::Win32::Foundation::{ERROR_FILE_NOT_FOUND, ERROR_SERVICE_DOES_NOT_EXIST};
+use windows::Win32::Foundation::{
+    ERROR_CANCELLED, ERROR_FILE_NOT_FOUND, ERROR_SERVICE_DOES_NOT_EXIST,
+};
 use windows::Win32::Storage::FileSystem::{
     MoveFileExW, MOVEFILE_REPLACE_EXISTING, MOVEFILE_WRITE_THROUGH,
 };
@@ -251,6 +253,14 @@ impl ServiceProvider for WindowsPlatform {
                     message: error.to_string(),
                 }
             })?;
+            service.close().map_err(|error| ServiceError::Query {
+                name: name.to_string(),
+                message: format!("关闭服务句柄失败: {error}"),
+            })?;
+            manager.close().map_err(|error| ServiceError::Query {
+                name: name.to_string(),
+                message: format!("关闭服务管理器失败: {error}"),
+            })?;
 
             let running = status.dwCurrentState == SERVICE_RUNNING;
             Ok(ServiceStatus {
@@ -304,22 +314,32 @@ fn unique_id() -> u64 {
     timestamp ^ (std::process::id() as u64) ^ UNIQUE_SEQUENCE.fetch_add(1, Ordering::Relaxed)
 }
 
-struct OwnedServiceHandle(SC_HANDLE);
+struct OwnedServiceHandle(Option<SC_HANDLE>);
 
 impl OwnedServiceHandle {
     fn new(handle: SC_HANDLE) -> Self {
-        Self(handle)
+        Self(Some(handle))
     }
 
     fn raw(&self) -> SC_HANDLE {
-        self.0
+        self.0.unwrap_or(SC_HANDLE(std::ptr::null_mut()))
+    }
+
+    fn close(mut self) -> io::Result<()> {
+        let handle = self
+            .0
+            .take()
+            .ok_or_else(|| io::Error::other("服务句柄已关闭"))?;
+        unsafe { CloseServiceHandle(handle) }.map_err(io::Error::other)
     }
 }
 
 impl Drop for OwnedServiceHandle {
     fn drop(&mut self) {
-        unsafe {
-            drop(CloseServiceHandle(self.0));
+        if let Some(handle) = self.0.take() {
+            if let Err(error) = unsafe { CloseServiceHandle(handle) } {
+                eprintln!("关闭 Windows 服务句柄失败: {error}");
+            }
         }
     }
 }
@@ -411,7 +431,7 @@ fn map_shell_execute_code(code: usize) -> AppResult<()> {
     if code > 32 {
         return Ok(());
     }
-    if code == 5 {
+    if code == ERROR_CANCELLED.0 as usize {
         return Err(PermissionError::Cancelled.into());
     }
     Err(PermissionError::ElevationFailed {

@@ -93,6 +93,7 @@ if (-not (Test-Path -LiteralPath $dstDir)) {{
     New-Item -ItemType Directory -Path $dstDir -Force | Out-Null
 }}
 $staged = Join-Path $dstDir ('.ssh-router-cli-' + [Guid]::NewGuid().ToString('N') + '.exe.tmp')
+$operationError = $null
 try {{
     Copy-Item -LiteralPath $src -Destination $staged -Force
     if (Test-Path -LiteralPath $dst) {{
@@ -104,8 +105,17 @@ try {{
     if ($LASTEXITCODE -ne 0) {{ throw "icacls reset failed: $LASTEXITCODE" }}
     & icacls $dst /grant 'SYSTEM:(RX)' 'Administrators:(F)' 'Users:(RX)' | Out-Null
     if ($LASTEXITCODE -ne 0) {{ throw "icacls grant failed: $LASTEXITCODE" }}
+}} catch {{
+    $operationError = $_.Exception.Message
+    throw
 }} finally {{
-    if (Test-Path -LiteralPath $staged) {{ Remove-Item -LiteralPath $staged -Force }}
+    if (Test-Path -LiteralPath $staged) {{
+        try {{ Remove-Item -LiteralPath $staged -Force -ErrorAction Stop }}
+        catch {{
+            if ($operationError) {{ throw "$operationError; cleanup failed: $($_.Exception.Message)" }}
+            throw
+        }}
+    }}
 }}
 "#
     ))
@@ -162,6 +172,20 @@ mod tests {
     }
 
     #[test]
+    fn reports_changed_file_length() {
+        let directory = temp_directory("changed-length");
+        fs::create_dir_all(&directory).expect("测试目录应可创建");
+        let bundled = directory.join("bundled.exe");
+        let deployed = directory.join("deployed.exe");
+        fs::write(&bundled, b"new cli with more bytes").expect("测试文件应可写入");
+        fs::write(&deployed, b"old cli").expect("测试文件应可写入");
+
+        assert!(!files_match(&bundled, &deployed).expect("文件应可比较"));
+
+        fs::remove_dir_all(directory).expect("测试目录应可清理");
+    }
+
+    #[test]
     fn reports_missing_deployed_file_as_outdated() {
         let directory = temp_directory("missing-deployed");
         fs::create_dir_all(&directory).expect("测试目录应可创建");
@@ -188,6 +212,25 @@ mod tests {
         assert!(matches!(
             error,
             crate::error::AppError::Cli(CliError::BundledCliMissing { .. })
+        ));
+        fs::remove_dir_all(directory).expect("测试目录应可清理");
+    }
+
+    #[test]
+    fn reports_unreadable_deployed_file_as_error() {
+        let directory = temp_directory("unreadable-deployed");
+        fs::create_dir_all(&directory).expect("测试目录应可创建");
+        let bundled = directory.join("bundled.exe");
+        let deployed = directory.join("deployed.exe");
+        fs::create_dir(&deployed).expect("测试目录应可创建");
+        let deployed_length = fs::metadata(&deployed).expect("测试目录信息应可读取").len() as usize;
+        fs::write(&bundled, vec![0_u8; deployed_length]).expect("测试文件应可写入");
+
+        let error = files_match(&bundled, &deployed).expect_err("目录不能作为 CLI 读取");
+
+        assert!(matches!(
+            error,
+            crate::error::AppError::Cli(CliError::Read { .. })
         ));
         fs::remove_dir_all(directory).expect("测试目录应可清理");
     }
