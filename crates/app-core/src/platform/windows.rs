@@ -16,8 +16,8 @@ use windows::Win32::System::Registry::{RegGetValueW, HKEY_LOCAL_MACHINE, RRF_RT_
 use windows::Win32::System::Services::{
     CloseServiceHandle, OpenSCManagerW, OpenServiceW, QueryServiceStatus, SC_HANDLE,
     SC_MANAGER_CONNECT, SERVICE_CONTINUE_PENDING, SERVICE_PAUSED, SERVICE_PAUSE_PENDING,
-    SERVICE_QUERY_STATUS, SERVICE_RUNNING, SERVICE_START_PENDING, SERVICE_STATUS, SERVICE_STOPPED,
-    SERVICE_STOP_PENDING,
+    SERVICE_QUERY_STATUS, SERVICE_RUNNING, SERVICE_START_PENDING, SERVICE_STATUS,
+    SERVICE_STATUS_CURRENT_STATE, SERVICE_STOPPED, SERVICE_STOP_PENDING,
 };
 use windows::Win32::UI::Shell::ShellExecuteW;
 use windows::Win32::UI::WindowsAndMessaging::SW_HIDE;
@@ -359,7 +359,7 @@ fn map_open_service_error(name: &str, error: windows::core::Error) -> AppError {
     }
 }
 
-fn service_state_name(state: u32) -> &'static str {
+fn service_state_name(state: SERVICE_STATUS_CURRENT_STATE) -> &'static str {
     match state {
         SERVICE_STOPPED => "Stopped",
         SERVICE_START_PENDING => "Start pending",
@@ -428,11 +428,13 @@ fn shell_execute_elevated(wrapper_path: &Path) -> AppResult<()> {
 }
 
 fn map_shell_execute_code(code: usize) -> AppResult<()> {
+    // UAC 拒绝在不同 Windows 版本上可能返回 SE_ERR_ACCESSDENIED(5) 或
+    // ERROR_CANCELLED(1223)；两者都代表用户没有批准提权操作。
+    if code == 5 || code == ERROR_CANCELLED.0 as usize {
+        return Err(PermissionError::Cancelled.into());
+    }
     if code > 32 {
         return Ok(());
-    }
-    if code == ERROR_CANCELLED.0 as usize {
-        return Err(PermissionError::Cancelled.into());
     }
     Err(PermissionError::ElevationFailed {
         message: format!("ShellExecuteW 返回错误码 {code}"),
@@ -585,6 +587,10 @@ mod tests {
     fn maps_access_denied_to_uac_cancellation() {
         assert!(matches!(
             map_shell_execute_code(5),
+            Err(AppError::Permission(PermissionError::Cancelled))
+        ));
+        assert!(matches!(
+            map_shell_execute_code(ERROR_CANCELLED.0 as usize),
             Err(AppError::Permission(PermissionError::Cancelled))
         ));
     }
