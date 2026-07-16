@@ -1,6 +1,7 @@
 use gpui::{
     actions, div, prelude::*, px, rgb, size, App, Application, Bounds, Context, Div, ElementId,
-    FocusHandle, KeyBinding, SharedString, Stateful, Window, WindowBounds, WindowOptions,
+    FocusHandle, FontWeight, KeyBinding, SharedString, Stateful, Window, WindowBounds,
+    WindowOptions,
 };
 
 actions!(ssh_router, [FocusNext, FocusPrevious]);
@@ -101,7 +102,7 @@ impl Render for SpikeView {
             .child(
                 div()
                     .text_2xl()
-                    .font_bold()
+                    .font_weight(FontWeight::BOLD)
                     .child("SSH Router · GPUI Windows 验证"),
             )
             .child(
