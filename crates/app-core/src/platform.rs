@@ -15,6 +15,8 @@ pub trait FileSystem: Send + Sync {
     fn exists(&self, path: &Path) -> AppResult<bool>;
     fn read(&self, path: &Path) -> AppResult<Vec<u8>>;
     fn write_atomic(&self, path: &Path, contents: &[u8]) -> AppResult<()>;
+    /// 删除文件；文件已经不存在时也应返回成功。
+    fn remove_file(&self, path: &Path) -> AppResult<()>;
 }
 
 pub trait RegistryProvider: Send + Sync {

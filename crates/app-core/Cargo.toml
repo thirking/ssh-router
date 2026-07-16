@@ -7,4 +7,6 @@ edition = "2021"
 path = "src/app_core.rs"
 
 [dependencies]
+serde_json = "1"
+ssh-router-config = { path = "../config" }
 thiserror = "2"

@@ -1,6 +1,8 @@
+pub mod config_service;
 pub mod error;
 pub mod platform;
 
+pub use config_service::{ConfigRepository, ConfigService, CONFIG_PATH};
 pub use error::{
     AppError, AppResult, CliError, ConfigError, PermissionError, PlatformError, RegistryError,
     ServiceError, UpdateError,
