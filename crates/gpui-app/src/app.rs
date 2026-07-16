@@ -7,7 +7,8 @@ use gpui_component::Root;
 use crate::actions::{CloseDemoModal, FocusNext, FocusPrevious, OpenDemoModal, APP_KEY_CONTEXT};
 use crate::app_state::{AppState, NotificationKind};
 use crate::components::{
-    app_button, modal_overlay, status_badge, text_field, toast_host, ButtonVariant, StatusKind,
+    app_button, checkbox, modal_overlay, radio, status_badge, text_field, toast_host,
+    ButtonVariant, StatusKind,
 };
 use crate::theme::AppTheme;
 
@@ -20,12 +21,14 @@ impl AppState {
         window.focus_prev();
     }
 
-    fn on_open_modal(&mut self, _: &OpenDemoModal, _: &mut Window, cx: &mut Context<Self>) {
+    fn on_open_modal(&mut self, _: &OpenDemoModal, window: &mut Window, cx: &mut Context<Self>) {
         self.open_modal(cx);
+        window.focus(&self.modal_focus);
     }
 
-    fn on_close_modal(&mut self, _: &CloseDemoModal, _: &mut Window, cx: &mut Context<Self>) {
+    fn on_close_modal(&mut self, _: &CloseDemoModal, window: &mut Window, cx: &mut Context<Self>) {
         self.close_modal(cx);
+        window.focus(&self.primary_focus);
     }
 }
 
@@ -81,46 +84,50 @@ impl Render for AppState {
                     .flex()
                     .items_center()
                     .gap_3()
-                    .child(
-                        app_button(
-                            "primary-action",
-                            "显示成功通知",
-                            ButtonVariant::Primary,
-                            false,
-                            &self.primary_focus,
-                            window,
-                            theme,
-                        )
-                        .on_click(cx.listener(|this, _, _, cx| {
+                    .child(app_button(
+                        "primary-action",
+                        "显示成功通知",
+                        ButtonVariant::Primary,
+                        false,
+                        &self.primary_focus,
+                        window,
+                        theme,
+                        cx.listener(|this, _, _, cx| {
                             this.notify(NotificationKind::Success, "基础组件状态正常", cx);
-                        })),
-                    )
-                    .child(
-                        app_button(
-                            "modal-action",
-                            "打开模态框",
-                            ButtonVariant::Secondary,
-                            false,
-                            &self.secondary_focus,
-                            window,
-                            theme,
-                        )
-                        .on_click(cx.listener(|this, _, _, cx| this.open_modal(cx))),
-                    )
-                    .child(
-                        app_button(
-                            "error-action",
-                            "显示错误通知",
-                            ButtonVariant::Danger,
-                            false,
-                            &self.danger_focus,
-                            window,
-                            theme,
-                        )
-                        .on_click(cx.listener(|this, _, _, cx| {
+                        }),
+                    ))
+                    .child(app_button(
+                        "modal-action",
+                        "打开模态框",
+                        ButtonVariant::Secondary,
+                        false,
+                        &self.secondary_focus,
+                        window,
+                        theme,
+                        cx.listener(|this, _, window, cx| {
+                            this.open_modal(cx);
+                            window.focus(&this.modal_focus);
+                        }),
+                    ))
+                    .child(app_button(
+                        "error-action",
+                        "显示错误通知",
+                        ButtonVariant::Danger,
+                        false,
+                        &self.danger_focus,
+                        window,
+                        theme,
+                        cx.listener(|this, _, _, cx| {
                             this.notify(NotificationKind::Error, "错误通知样式正常", cx);
-                        })),
-                    ),
+                        }),
+                    )),
+            )
+            .child(
+                div()
+                    .flex()
+                    .gap_3()
+                    .child(checkbox("sftp-choice", "启用 SFTP", true, false))
+                    .child(radio("shell-choice", "设为默认路由", true, false)),
             )
             .child(
                 div()
@@ -141,11 +148,15 @@ impl Render for AppState {
                     "关闭",
                     ButtonVariant::Primary,
                     false,
-                    &self.primary_focus,
+                    &self.modal_focus,
                     window,
                     theme,
-                )
-                .on_click(cx.listener(|this, _, _, cx| this.close_modal(cx))),
+                    cx.listener(|this, _, window, cx| {
+                        this.close_modal(cx);
+                        window.focus(&this.primary_focus);
+                    }),
+                ),
+                &self.modal_focus,
                 theme,
             ))
         })

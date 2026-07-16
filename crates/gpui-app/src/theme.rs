@@ -1,4 +1,4 @@
-use gpui::{hsla, Hsla};
+use gpui::{hsla, px, Hsla, Pixels};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct AppTheme {
@@ -15,6 +15,13 @@ pub struct AppTheme {
     pub warning: Hsla,
     pub focus: Hsla,
     pub overlay: Hsla,
+    pub font_body: Pixels,
+    pub font_small: Pixels,
+    pub space_sm: Pixels,
+    pub space_md: Pixels,
+    pub border_width: Pixels,
+    pub radius: Pixels,
+    pub disabled_opacity: f32,
 }
 
 impl Default for AppTheme {
@@ -33,6 +40,13 @@ impl Default for AppTheme {
             warning: hsla(37.7 / 360.0, 0.92, 0.50, 1.0),
             focus: hsla(213.1 / 360.0, 0.94, 0.68, 1.0),
             overlay: hsla(222.2 / 360.0, 0.47, 0.05, 0.72),
+            font_body: px(14.0),
+            font_small: px(12.0),
+            space_sm: px(8.0),
+            space_md: px(16.0),
+            border_width: px(1.0),
+            radius: px(6.0),
+            disabled_opacity: 0.45,
         }
     }
 }

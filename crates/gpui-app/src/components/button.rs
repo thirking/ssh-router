@@ -1,4 +1,4 @@
-use gpui::{div, prelude::*, Div, ElementId, FocusHandle, Stateful, Window};
+use gpui::{div, prelude::*, App, ClickEvent, Div, ElementId, FocusHandle, Stateful, Window};
 
 use crate::theme::AppTheme;
 
@@ -9,6 +9,7 @@ pub enum ButtonVariant {
     Danger,
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn app_button(
     id: impl Into<ElementId>,
     label: impl Into<gpui::SharedString>,
@@ -17,6 +18,7 @@ pub fn app_button(
     focus_handle: &FocusHandle,
     window: &Window,
     theme: AppTheme,
+    on_activate: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
 ) -> Stateful<Div> {
     let focused = focus_handle.is_focused(window);
     let background = match variant {
@@ -37,13 +39,15 @@ pub fn app_button(
         .px_4()
         .py_2()
         .rounded_md()
-        .border_1()
+        .border(theme.border_width)
         .border_color(if focused { theme.focus } else { theme.border })
         .bg(background)
         .text_color(theme.text)
         .when(!disabled, |element| {
-            element.cursor_pointer().hover(move |style| style.bg(hover))
+            element
+                .hover(move |style| style.bg(hover))
+                .on_click(on_activate)
         })
-        .when(disabled, |element| element.opacity(0.45))
+        .when(disabled, |element| element.opacity(theme.disabled_opacity))
         .child(label.into())
 }

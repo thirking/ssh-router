@@ -30,6 +30,7 @@ pub struct AppState {
     pub primary_focus: FocusHandle,
     pub secondary_focus: FocusHandle,
     pub danger_focus: FocusHandle,
+    pub modal_focus: FocusHandle,
     next_notification_id: u64,
 }
 
@@ -52,6 +53,7 @@ impl AppState {
             primary_focus: cx.focus_handle().tab_index(10).tab_stop(true),
             secondary_focus: cx.focus_handle().tab_index(11).tab_stop(true),
             danger_focus: cx.focus_handle().tab_index(12).tab_stop(true),
+            modal_focus: cx.focus_handle().tab_index(20).tab_stop(true),
             next_notification_id: 2,
         }
     }
@@ -79,13 +81,7 @@ impl AppState {
             title: "基础组件验证".into(),
             body: "模态层、键盘动作与焦点样式已经接入。".into(),
         });
-        self.notifications.push(Notification {
-            id: self.next_notification_id,
-            kind: NotificationKind::Warning,
-            message: "模态框已打开，可按 Esc 关闭".into(),
-        });
-        self.next_notification_id += 1;
-        cx.notify();
+        self.notify(NotificationKind::Warning, "模态框已打开，可按 Esc 关闭", cx);
     }
 
     pub fn close_modal(&mut self, cx: &mut Context<Self>) {
@@ -99,13 +95,11 @@ mod tests {
     use super::*;
 
     #[test]
-    fn notification_ids_are_monotonic() {
-        let mut next_id = 1_u64;
-        let first = next_id;
-        next_id += 1;
-        let second = next_id;
-
-        assert!(second > first);
+    fn application_actions_are_distinct() {
+        assert_ne!(
+            std::any::TypeId::of::<crate::actions::FocusNext>(),
+            std::any::TypeId::of::<crate::actions::FocusPrevious>()
+        );
     }
 
     #[test]

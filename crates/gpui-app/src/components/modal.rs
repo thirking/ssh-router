@@ -1,4 +1,4 @@
-use gpui::{div, prelude::*, AnyElement, IntoElement};
+use gpui::{div, prelude::*, AnyElement, FocusHandle, IntoElement};
 
 use crate::theme::AppTheme;
 
@@ -6,6 +6,7 @@ pub fn modal_overlay(
     title: impl Into<gpui::SharedString>,
     body: impl Into<gpui::SharedString>,
     content: impl IntoElement,
+    focus_handle: &FocusHandle,
     theme: AppTheme,
 ) -> AnyElement {
     div()
@@ -17,6 +18,7 @@ pub fn modal_overlay(
         .bg(theme.overlay)
         .child(
             div()
+                .track_focus(focus_handle)
                 .w(gpui::px(440.0))
                 .max_w_full()
                 .flex()
