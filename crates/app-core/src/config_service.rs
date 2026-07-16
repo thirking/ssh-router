@@ -314,14 +314,22 @@ mod tests {
     #[test]
     fn normalizes_loaded_legacy_config() {
         let platform = FakePlatform::default();
-        let mut config = Config::default_config();
-        for route in &mut config.routes {
-            route.default = false;
-        }
-        platform.files.lock().expect("锁应可用").insert(
-            PathBuf::from("config.json"),
-            serde_json::to_vec(&config).expect("测试配置应可序列化"),
-        );
+        let legacy_json = br#"{
+            "routes": [{
+                "port": 22,
+                "name": "PowerShell",
+                "shell": "pwsh.exe",
+                "interactiveTemplate": "pwsh.exe -l",
+                "commandTemplate": "pwsh.exe -File {tmpfile}",
+                "tmpFileExt": ".ps1"
+            }],
+            "sftpCommand": "sftp-server.exe"
+        }"#;
+        platform
+            .files
+            .lock()
+            .expect("锁应可用")
+            .insert(PathBuf::from("config.json"), legacy_json.to_vec());
         let repository = ConfigService::with_paths(platform, "config.json", "temp");
 
         let loaded = repository.load().expect("旧配置应可加载");

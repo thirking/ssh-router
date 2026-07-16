@@ -1,13 +1,15 @@
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use std::collections::HashSet;
 use thiserror::Error;
 
 /// SSH Router 配置，序列化为 ssh-router.json
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+#[derive(Serialize, Clone, Debug, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct Config {
     pub routes: Vec<Route>,
     pub sftp_command: String,
+    #[serde(skip)]
+    legacy_defaults_missing: bool,
 }
 
 /// 单条端口路由规则
@@ -22,6 +24,54 @@ pub struct Route {
     pub tmp_file_ext: String,
     #[serde(default)]
     pub default: bool,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ConfigWire {
+    routes: Vec<RouteWire>,
+    sftp_command: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RouteWire {
+    port: u16,
+    name: String,
+    shell: String,
+    interactive_template: String,
+    command_template: String,
+    tmp_file_ext: String,
+    default: Option<bool>,
+}
+
+impl<'de> Deserialize<'de> for Config {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let wire = ConfigWire::deserialize(deserializer)?;
+        let legacy_defaults_missing = wire.routes.iter().all(|route| route.default.is_none());
+        let routes = wire
+            .routes
+            .into_iter()
+            .map(|route| Route {
+                port: route.port,
+                name: route.name,
+                shell: route.shell,
+                interactive_template: route.interactive_template,
+                command_template: route.command_template,
+                tmp_file_ext: route.tmp_file_ext,
+                default: route.default.unwrap_or(false),
+            })
+            .collect();
+
+        Ok(Self {
+            routes,
+            sftp_command: wire.sftp_command,
+            legacy_defaults_missing,
+        })
+    }
 }
 
 #[derive(Clone, Debug, Error, PartialEq, Eq)]
@@ -90,8 +140,12 @@ pub fn validate_config(config: &Config) -> Result<(), ConfigValidationError> {
 /// 兼容早期没有 `default` 字段的配置：零条默认路由时使用第一条作为默认。
 /// 多条默认路由仍由校验器拒绝，避免掩盖真实冲突。
 pub fn normalize_legacy_config(config: &mut Config) -> bool {
-    if !config.routes.is_empty() && config.routes.iter().all(|route| !route.default) {
+    if config.legacy_defaults_missing
+        && !config.routes.is_empty()
+        && config.routes.iter().all(|route| !route.default)
+    {
         config.routes[0].default = true;
+        config.legacy_defaults_missing = false;
         return true;
     }
     false
@@ -148,6 +202,7 @@ impl Config {
             ],
             sftp_command: "cmd.exe /c \"C:\\Windows\\System32\\OpenSSH\\sftp-server.exe\""
                 .to_string(),
+            legacy_defaults_missing: false,
         }
     }
 }
@@ -307,10 +362,18 @@ mod tests {
 
     #[test]
     fn normalizes_legacy_config_without_default_field() {
-        let mut config = Config::default_config();
-        for route in &mut config.routes {
-            route.default = false;
-        }
+        let json = r#"{
+            "routes": [{
+                "port": 22,
+                "name": "PowerShell",
+                "shell": "pwsh.exe",
+                "interactiveTemplate": "pwsh.exe -l",
+                "commandTemplate": "pwsh.exe -File {tmpfile}",
+                "tmpFileExt": ".ps1"
+            }],
+            "sftpCommand": "sftp-server.exe"
+        }"#;
+        let mut config: Config = serde_json::from_str(json).expect("旧配置应可解析");
 
         assert!(normalize_legacy_config(&mut config));
         assert!(config.routes[0].default);
@@ -327,5 +390,28 @@ mod tests {
 
         assert!(!normalize_legacy_config(&mut config));
         assert_eq!(config, original);
+    }
+
+    #[test]
+    fn does_not_normalize_explicit_false_default() {
+        let json = r#"{
+            "routes": [{
+                "port": 22,
+                "name": "PowerShell",
+                "shell": "pwsh.exe",
+                "interactiveTemplate": "pwsh.exe -l",
+                "commandTemplate": "pwsh.exe -File {tmpfile}",
+                "tmpFileExt": ".ps1",
+                "default": false
+            }],
+            "sftpCommand": "sftp-server.exe"
+        }"#;
+        let mut config: Config = serde_json::from_str(json).expect("配置应可解析");
+
+        assert!(!normalize_legacy_config(&mut config));
+        assert_eq!(
+            validate_config(&config),
+            Err(ConfigValidationError::DefaultRouteCount { count: 0 })
+        );
     }
 }
