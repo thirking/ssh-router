@@ -15,8 +15,12 @@ use crate::components::{
     app_button, checkbox, modal_overlay, radio, status_badge, text_field, toast_host,
     ButtonVariant, StatusKind,
 };
+use crate::system_status_state::SystemOperation;
 use crate::theme::AppTheme;
 use crate::views::config_main_window;
+use crate::views::{
+    cli_sync_dialog::cli_sync_dialog, quick_actions::quick_actions, status_panel::status_panel,
+};
 
 impl AppState {
     fn on_focus_next(&mut self, _: &FocusNext, window: &mut Window, _: &mut Context<Self>) {
@@ -100,6 +104,30 @@ impl Render for AppState {
                 });
             }
         });
+        let system_action = |operation: SystemOperation| {
+            let entity = cx.entity().downgrade();
+            Rc::new(move |_: &ClickEvent, window: &mut Window, cx: &mut App| {
+                let _ = entity.update(cx, |state, cx| {
+                    state.request_system_operation(operation, window, cx)
+                });
+            })
+        };
+        let on_status_refresh = {
+            let entity = cx.entity().downgrade();
+            Rc::new(move |_: &ClickEvent, window: &mut Window, cx: &mut App| {
+                let _ = entity.update(cx, |state, cx| state.request_status_refresh(window, cx));
+            })
+        };
+        let on_install_cli = system_action(SystemOperation::InstallCli);
+        let on_default_shell = system_action(SystemOperation::SetDefaultShell);
+        let on_restart_sshd = system_action(SystemOperation::RestartSshd);
+        let on_dismiss_cli_prompt = {
+            let entity = cx.entity().downgrade();
+            Rc::new(move |_: &ClickEvent, _: &mut Window, cx: &mut App| {
+                let _ = entity.update(cx, |state, cx| state.dismiss_cli_sync_prompt(cx));
+            })
+        };
+        let on_sync_from_prompt = on_install_cli.clone();
         let content = div()
             .id("ssh-router-app")
             .key_context(APP_KEY_CONTEXT)
@@ -146,6 +174,14 @@ impl Render for AppState {
                     .child(status_badge("GPUI MVP", StatusKind::Success, theme)),
             )
             .child(text_field("路由名称", &self.input, theme))
+            .child(status_panel(&self.system, theme, on_status_refresh))
+            .child(quick_actions(
+                self.system.running,
+                theme,
+                on_install_cli,
+                on_default_shell,
+                on_restart_sshd,
+            ))
             .child(config_main_window(
                 &self.config,
                 &self.route_editor,
@@ -270,7 +306,13 @@ impl Render for AppState {
                     .child(status_badge("异常示例", StatusKind::Error, theme))
                     .child(status_badge("未检查", StatusKind::Neutral, theme)),
             )
-            .child(toast_host(&self.notifications, theme));
+            .child(toast_host(&self.notifications, theme))
+            .child(cli_sync_dialog(
+                self.system.cli_sync_prompt_open,
+                theme,
+                on_sync_from_prompt,
+                on_dismiss_cli_prompt,
+            ));
 
         content.when_some(self.modal.clone(), |content, modal| {
             content.child(modal_overlay(
@@ -321,7 +363,10 @@ pub fn run() {
             |window, cx| {
                 let app = cx.new(|cx| AppState::new(window, cx));
                 #[cfg(windows)]
-                app.update(cx, |state, cx| state.start_config_load(window, cx));
+                app.update(cx, |state, cx| {
+                    state.start_config_load(window, cx);
+                    state.start_status_refresh(window, cx);
+                });
                 cx.new(|cx| Root::new(app, window, cx))
             },
         );

@@ -4,6 +4,7 @@ use gpui_component::input::{InputEvent, InputState};
 use crate::{
     config_state::ConfigState,
     route_editor_state::{RouteEditorInputs, RouteEditorState},
+    system_status_state::{SystemOperation, SystemStatusState},
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -31,6 +32,7 @@ pub struct AppState {
     pub config: ConfigState,
     pub route_editor: RouteEditorState,
     pub route_inputs: RouteEditorInputs,
+    pub system: SystemStatusState,
     pub input: Entity<InputState>,
     pub modal: Option<ModalState>,
     pub notifications: Vec<Notification>,
@@ -126,6 +128,7 @@ impl AppState {
             config: ConfigState::default(),
             route_editor: RouteEditorState::default(),
             route_inputs,
+            system: SystemStatusState::default(),
             input,
             modal: None,
             notifications: vec![Notification {
@@ -160,6 +163,117 @@ impl AppState {
         {
             self.route_editor.errors.push(error);
         }
+    }
+
+    #[cfg(windows)]
+    pub fn start_status_refresh(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        use ssh_router_app_core::platform::windows::WindowsPlatform;
+        use ssh_router_app_core::{DesktopSystemService, SystemService};
+
+        if !self.system.begin_refresh() {
+            return;
+        }
+        let task = cx.background_spawn(async move {
+            let platform = WindowsPlatform::new().map_err(|error| error.to_string())?;
+            let service = DesktopSystemService::new(platform);
+            service.check_status().map_err(|error| error.to_string())
+        });
+        cx.spawn_in(window, async move |entity, cx| {
+            let result = task.await;
+            let _ = entity.update_in(cx, |state, _, cx| {
+                state.system.apply_refresh(result);
+                if state.system.maybe_prompt_cli_sync() {
+                    state.notify(
+                        NotificationKind::Warning,
+                        "CLI 版本与当前应用不一致，请同步",
+                        cx,
+                    );
+                }
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+
+    pub fn request_status_refresh(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        #[cfg(windows)]
+        self.start_status_refresh(window, cx);
+        #[cfg(not(windows))]
+        self.notify(NotificationKind::Info, "系统状态检查仅支持 Windows", cx);
+    }
+
+    #[cfg(windows)]
+    pub fn start_system_operation(
+        &mut self,
+        operation: SystemOperation,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        use ssh_router_app_core::platform::windows::WindowsPlatform;
+        use ssh_router_app_core::{DesktopSystemService, SystemService};
+
+        if operation == SystemOperation::Refresh {
+            self.start_status_refresh(window, cx);
+            return;
+        }
+        if !self.system.begin_operation(operation) {
+            return;
+        }
+        if operation == SystemOperation::InstallCli {
+            self.system.close_cli_prompt();
+        }
+        let task = cx.background_spawn(async move {
+            let platform = WindowsPlatform::new().map_err(|error| error.to_string())?;
+            let service = DesktopSystemService::new(platform);
+            match operation {
+                SystemOperation::InstallCli => {
+                    service.install_cli().map_err(|error| error.to_string())
+                }
+                SystemOperation::SetDefaultShell => service
+                    .set_default_shell()
+                    .map_err(|error| error.to_string()),
+                SystemOperation::RestartSshd => {
+                    service.restart_sshd().map_err(|error| error.to_string())
+                }
+                SystemOperation::Refresh => Err("刷新应使用独立状态任务".to_string()),
+            }
+        });
+        cx.spawn_in(window, async move |entity, cx| {
+            let result = task.await;
+            let _ = entity.update_in(cx, |state, window, cx| {
+                let success = state.system.apply_operation(result);
+                if success {
+                    state.notify(NotificationKind::Success, "系统操作已完成", cx);
+                    state.start_status_refresh(window, cx);
+                } else {
+                    let message = state.system.error.clone().unwrap_or_default();
+                    if message.contains("取消") {
+                        state.notify(NotificationKind::Info, "已取消管理员权限操作", cx);
+                    } else {
+                        state.notify_error(format!("系统操作失败：{message}"), cx);
+                    }
+                }
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+
+    pub fn request_system_operation(
+        &mut self,
+        operation: SystemOperation,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        #[cfg(windows)]
+        self.start_system_operation(operation, window, cx);
+        #[cfg(not(windows))]
+        self.notify(NotificationKind::Info, "系统快捷操作仅支持 Windows", cx);
+    }
+
+    pub fn dismiss_cli_sync_prompt(&mut self, cx: &mut Context<Self>) {
+        self.system.close_cli_prompt();
+        cx.notify();
     }
 
     #[cfg(windows)]
