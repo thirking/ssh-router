@@ -29,7 +29,8 @@ pub fn config_main_window(
     let title = match &config.load_state {
         crate::config_state::ConfigLoadState::Loading => "正在加载配置".to_string(),
         crate::config_state::ConfigLoadState::NotFound => "未找到配置文件".to_string(),
-        crate::config_state::ConfigLoadState::Corrupt(message) => {
+        crate::config_state::ConfigLoadState::Corrupt(message)
+        | crate::config_state::ConfigLoadState::Error(message) => {
             format!("配置文件损坏：{message}")
         }
         crate::config_state::ConfigLoadState::Loaded => "SSH Router 配置".to_string(),
@@ -54,7 +55,11 @@ pub fn config_main_window(
                 ),
         )
         .child(route_table(&config.routes, theme, on_edit, on_delete))
-        .child(sftp_editor(&inputs.sftp_command, theme))
+        .child(sftp_editor(
+            &inputs.sftp_command,
+            config.field_errors().get("sftp_command").cloned(),
+            theme,
+        ))
         .child(route_editor(
             editor, inputs, theme, on_save, on_cancel, on_default,
         ))

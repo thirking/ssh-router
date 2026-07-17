@@ -38,26 +38,40 @@ pub fn route_editor(
         .border_color(theme.border)
         .bg(theme.surface)
         .child(div().text_lg().child(title))
-        .child(field("端口", Input::new(&inputs.port).w_full(), theme))
-        .child(field("名称", Input::new(&inputs.name).w_full(), theme))
+        .child(field(
+            "端口",
+            Input::new(&inputs.port).w_full(),
+            error_for(editor, "端口"),
+            theme,
+        ))
+        .child(field(
+            "名称",
+            Input::new(&inputs.name).w_full(),
+            error_for(editor, "名称"),
+            theme,
+        ))
         .child(field(
             "Shell 路径",
             Input::new(&inputs.shell).w_full(),
+            error_for(editor, "Shell"),
             theme,
         ))
         .child(field(
             "交互式模板",
             Input::new(&inputs.interactive_template).w_full(),
+            error_for(editor, "交互式模板"),
             theme,
         ))
         .child(field(
             "命令模板",
             Input::new(&inputs.command_template).w_full(),
+            error_for(editor, "命令模板"),
             theme,
         ))
         .child(field(
             "临时文件扩展名",
             Input::new(&inputs.tmp_file_ext).w_full(),
+            error_for(editor, "临时文件扩展名"),
             theme,
         ))
         .child(
@@ -91,11 +105,27 @@ pub fn route_editor(
         .into_any_element()
 }
 
-fn field(label: &'static str, input: impl IntoElement, theme: AppTheme) -> impl IntoElement {
+fn field(
+    label: &'static str,
+    input: impl IntoElement,
+    error: Option<String>,
+    theme: AppTheme,
+) -> impl IntoElement {
     div()
         .flex()
         .flex_col()
         .gap_1()
         .child(div().text_sm().text_color(theme.text_muted).child(label))
         .child(input)
+        .when_some(error, |element, error| {
+            element.child(div().text_sm().text_color(theme.danger).child(error))
+        })
+}
+
+fn error_for(editor: &RouteEditorState, field: &str) -> Option<String> {
+    editor
+        .errors
+        .iter()
+        .find(|error| error.starts_with(field))
+        .cloned()
 }

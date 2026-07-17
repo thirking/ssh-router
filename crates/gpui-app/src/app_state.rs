@@ -42,6 +42,7 @@ pub struct AppState {
     pub create_focus: FocusHandle,
     pub modal_focus: FocusHandle,
     _route_subscriptions: Vec<Subscription>,
+    syncing_inputs: bool,
     next_notification_id: u64,
 }
 
@@ -55,14 +56,14 @@ impl AppState {
         let route_inputs = RouteEditorInputs::new(window, cx);
         let subscriptions = vec![
             cx.subscribe(&route_inputs.port, |this, input, event: &InputEvent, cx| {
-                if matches!(event, InputEvent::Change) {
+                if !this.syncing_inputs && matches!(event, InputEvent::Change) {
                     this.route_editor.route.port = input.read(cx).value().to_string();
                     this.refresh_route_validation();
                     cx.notify();
                 }
             }),
             cx.subscribe(&route_inputs.name, |this, input, event: &InputEvent, cx| {
-                if matches!(event, InputEvent::Change) {
+                if !this.syncing_inputs && matches!(event, InputEvent::Change) {
                     this.route_editor.route.name = input.read(cx).value().to_string();
                     this.refresh_route_validation();
                     cx.notify();
@@ -71,7 +72,7 @@ impl AppState {
             cx.subscribe(
                 &route_inputs.shell,
                 |this, input, event: &InputEvent, cx| {
-                    if matches!(event, InputEvent::Change) {
+                    if !this.syncing_inputs && matches!(event, InputEvent::Change) {
                         this.route_editor.route.shell = input.read(cx).value().to_string();
                         this.refresh_route_validation();
                         cx.notify();
@@ -81,7 +82,7 @@ impl AppState {
             cx.subscribe(
                 &route_inputs.interactive_template,
                 |this, input, event: &InputEvent, cx| {
-                    if matches!(event, InputEvent::Change) {
+                    if !this.syncing_inputs && matches!(event, InputEvent::Change) {
                         this.route_editor.route.interactive_template =
                             input.read(cx).value().to_string();
                         this.refresh_route_validation();
@@ -92,7 +93,7 @@ impl AppState {
             cx.subscribe(
                 &route_inputs.command_template,
                 |this, input, event: &InputEvent, cx| {
-                    if matches!(event, InputEvent::Change) {
+                    if !this.syncing_inputs && matches!(event, InputEvent::Change) {
                         this.route_editor.route.command_template =
                             input.read(cx).value().to_string();
                         this.refresh_route_validation();
@@ -103,7 +104,7 @@ impl AppState {
             cx.subscribe(
                 &route_inputs.tmp_file_ext,
                 |this, input, event: &InputEvent, cx| {
-                    if matches!(event, InputEvent::Change) {
+                    if !this.syncing_inputs && matches!(event, InputEvent::Change) {
                         this.route_editor.route.tmp_file_ext = input.read(cx).value().to_string();
                         this.refresh_route_validation();
                         cx.notify();
@@ -113,7 +114,7 @@ impl AppState {
             cx.subscribe(
                 &route_inputs.sftp_command,
                 |this, input, event: &InputEvent, cx| {
-                    if matches!(event, InputEvent::Change) {
+                    if !this.syncing_inputs && matches!(event, InputEvent::Change) {
                         this.config
                             .set_sftp_command(input.read(cx).value().to_string());
                         cx.notify();
@@ -140,6 +141,7 @@ impl AppState {
             create_focus: cx.focus_handle().tab_index(14).tab_stop(true),
             modal_focus: cx.focus_handle().tab_index(20).tab_stop(true),
             _route_subscriptions: subscriptions,
+            syncing_inputs: false,
             next_notification_id: 2,
         }
     }
@@ -170,6 +172,7 @@ impl AppState {
             return;
         }
         let config = self.config.to_config();
+        let saved_config = config.clone();
         let task = cx.background_spawn(async move {
             let platform = WindowsPlatform::new().map_err(|error| error.to_string())?;
             let repository = ConfigService::new(platform);
@@ -178,7 +181,7 @@ impl AppState {
         cx.spawn(async move |entity, cx| {
             let result = task.await;
             let _ = entity.update(cx, |state, cx| {
-                match state.config.apply_save_result(result) {
+                match state.config.apply_save_result(result, saved_config) {
                     Ok(()) => state.notify(NotificationKind::Success, "配置已保存", cx),
                     Err(error) => state.notify_error(format!("保存失败：{error:?}"), cx),
                 }
@@ -204,11 +207,7 @@ impl AppState {
             let _ = entity.update_in(cx, |state, window, cx| match result {
                 Ok(config) => {
                     state.config.apply_loaded(config);
-                    state.route_inputs.set_sftp_command(
-                        state.config.sftp_command.clone(),
-                        window,
-                        cx,
-                    );
+                    state.sync_sftp_input(window, cx);
                     state.notify(NotificationKind::Success, "已创建默认配置", cx);
                 }
                 Err(error) => state.notify_error(format!("创建默认配置失败：{error}"), cx),
@@ -236,9 +235,7 @@ impl AppState {
             let result = task.await;
             let _ = entity.update_in(cx, |state, window, cx| {
                 state.config.apply_load_result(result);
-                state
-                    .route_inputs
-                    .set_sftp_command(state.config.sftp_command.clone(), window, cx);
+                state.sync_sftp_input(window, cx);
                 cx.notify();
             });
         })
@@ -279,24 +276,21 @@ impl AppState {
     pub fn edit_route(&mut self, id: u64, window: &mut Window, cx: &mut Context<Self>) {
         if let Some(item) = self.config.routes.iter().find(|item| item.id == id) {
             self.route_editor = RouteEditorState::new(Some((id, item.route.clone())));
-            self.route_inputs
-                .set_route(&self.route_editor.route, window, cx);
+            self.sync_route_inputs(window, cx);
             cx.notify();
         }
     }
 
     pub fn start_new_route(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.route_editor = RouteEditorState::default();
-        self.route_inputs
-            .set_route(&self.route_editor.route, window, cx);
+        self.sync_route_inputs(window, cx);
         cx.notify();
     }
 
     pub fn cancel_route_edit(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.route_editor.cancel();
         self.route_editor = RouteEditorState::default();
-        self.route_inputs
-            .set_route(&self.route_editor.route, window, cx);
+        self.sync_route_inputs(window, cx);
         cx.notify();
     }
 
@@ -317,8 +311,7 @@ impl AppState {
                     self.config.add_route(route);
                 }
                 self.route_editor = RouteEditorState::default();
-                self.route_inputs
-                    .set_route(&self.route_editor.route, window, cx);
+                self.sync_route_inputs(window, cx);
                 self.notify(NotificationKind::Success, "路由草稿已更新", cx);
             }
             Err(errors) => self.notify_error(errors.join("；"), cx),
@@ -329,6 +322,20 @@ impl AppState {
         if self.config.delete_route(id) {
             self.notify(NotificationKind::Info, "路由已从草稿中删除", cx);
         }
+    }
+
+    fn sync_route_inputs(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.syncing_inputs = true;
+        self.route_inputs
+            .set_route(&self.route_editor.route, window, cx);
+        self.syncing_inputs = false;
+    }
+
+    fn sync_sftp_input(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.syncing_inputs = true;
+        self.route_inputs
+            .set_sftp_command(self.config.sftp_command.clone(), window, cx);
+        self.syncing_inputs = false;
     }
 }
 

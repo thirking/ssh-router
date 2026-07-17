@@ -22,6 +22,7 @@ pub enum ConfigLoadState {
     Loading,
     NotFound,
     Corrupt(String),
+    Error(String),
     Loaded,
 }
 
@@ -92,7 +93,9 @@ impl ConfigState {
                 self.mark_corrupt(message)
             }
             Err(error) => {
-                self.error = Some(ConfigStateError::Save(error.to_string()));
+                let message = error.to_string();
+                self.load_state = ConfigLoadState::Error(message.clone());
+                self.error = Some(ConfigStateError::Validation(message));
             }
         }
     }
@@ -201,12 +204,12 @@ impl ConfigState {
     pub fn apply_save_result(
         &mut self,
         result: Result<(), impl Into<String>>,
+        saved_config: Config,
     ) -> Result<(), ConfigStateError> {
         match result {
             Ok(()) => {
-                let config = self.to_config();
-                self.saved = Some(config);
-                self.is_dirty = false;
+                self.saved = Some(saved_config.clone());
+                self.is_dirty = self.to_config() != saved_config;
                 self.error = None;
                 Ok(())
             }
@@ -287,7 +290,9 @@ mod tests {
         let mut state = ConfigState::from_loaded(Config::default_config());
         state.sftp_command = "changed".to_string();
         state.is_dirty = true;
-        assert!(state.apply_save_result(Err("权限不足")).is_err());
+        assert!(state
+            .apply_save_result(Err("权限不足"), state.to_config())
+            .is_err());
         assert!(state.is_dirty);
         assert_eq!(state.sftp_command, "changed");
     }
@@ -300,5 +305,20 @@ mod tests {
 
         assert!(state.is_dirty);
         assert_eq!(state.sftp_command, "internal-sftp");
+    }
+
+    #[test]
+    fn save_completion_does_not_clear_newer_draft() {
+        let mut state = ConfigState::from_loaded(Config::default_config());
+        let saved_snapshot = state.to_config();
+        state.sftp_command = "newer-edit".to_string();
+        state.is_dirty = true;
+
+        state
+            .apply_save_result(Ok::<(), String>(()), saved_snapshot.clone())
+            .expect("旧快照保存应成功");
+
+        assert!(state.is_dirty);
+        assert_eq!(state.saved, Some(saved_snapshot));
     }
 }

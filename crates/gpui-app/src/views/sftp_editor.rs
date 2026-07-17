@@ -3,7 +3,11 @@ use gpui_component::input::{Input, InputState};
 
 use crate::theme::AppTheme;
 
-pub fn sftp_editor(input: &Entity<InputState>, theme: AppTheme) -> AnyElement {
+pub fn sftp_editor(
+    input: &Entity<InputState>,
+    error: Option<String>,
+    theme: AppTheme,
+) -> AnyElement {
     div()
         .flex()
         .flex_col()
@@ -15,5 +19,8 @@ pub fn sftp_editor(input: &Entity<InputState>, theme: AppTheme) -> AnyElement {
                 .child("SFTP 命令"),
         )
         .child(Input::new(input).w_full())
+        .when_some(error, |element, error| {
+            element.child(div().text_sm().text_color(theme.danger).child(error))
+        })
         .into_any_element()
 }
