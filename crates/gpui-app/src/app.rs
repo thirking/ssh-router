@@ -380,8 +380,15 @@ impl Render for AppState {
 
 pub fn run() {
     #[cfg(windows)]
+    let startup_marker = std::env::var_os("SSH_ROUTER_STARTUP_MARKER");
+    #[cfg(windows)]
+    let instance_name = startup_marker
+        .as_ref()
+        .and_then(|_| std::env::var("SSH_ROUTER_INSTANCE_NAME").ok())
+        .unwrap_or_else(|| "Global\\SSH Router".to_string());
+    #[cfg(windows)]
     let single_instance = match ssh_router_app_core::platform::windows::single_instance::SingleInstanceGuard::acquire(
-        "Global\\SSH Router",
+        &instance_name,
     ) {
         Ok(ssh_router_app_core::platform::windows::single_instance::SingleInstance::Primary(
             guard,
@@ -420,6 +427,16 @@ pub fn run() {
                 ..Default::default()
             },
             move |window, cx| {
+                if let Some(marker) = startup_marker.clone() {
+                    window.on_next_frame(move |window, _| {
+                        window.on_next_frame(move |_, cx| {
+                            cx.background_spawn(async move {
+                                let _ = std::fs::write(marker, std::process::id().to_string());
+                            })
+                            .detach();
+                        });
+                    });
+                }
                 let app = cx.new(|cx| {
                     AppState::new(
                         window,
