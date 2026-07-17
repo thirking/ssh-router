@@ -173,6 +173,7 @@ impl AppState {
         if !self.system.begin_refresh() {
             return;
         }
+        cx.notify();
         let task = cx.background_spawn(async move {
             let platform = WindowsPlatform::new().map_err(|error| error.to_string())?;
             let service = DesktopSystemService::new(platform);
@@ -222,32 +223,38 @@ impl AppState {
         if operation == SystemOperation::InstallCli {
             self.system.close_cli_prompt();
         }
+        cx.notify();
         let task = cx.background_spawn(async move {
-            let platform = WindowsPlatform::new().map_err(|error| error.to_string())?;
+            let platform = WindowsPlatform::new()?;
             let service = DesktopSystemService::new(platform);
             match operation {
-                SystemOperation::InstallCli => {
-                    service.install_cli().map_err(|error| error.to_string())
+                SystemOperation::InstallCli => service.install_cli(),
+                SystemOperation::SetDefaultShell => service.set_default_shell(),
+                SystemOperation::RestartSshd => service.restart_sshd(),
+                SystemOperation::Refresh => Err(ssh_router_app_core::PlatformError::Operation {
+                    message: "刷新应使用独立状态任务".to_string(),
                 }
-                SystemOperation::SetDefaultShell => service
-                    .set_default_shell()
-                    .map_err(|error| error.to_string()),
-                SystemOperation::RestartSshd => {
-                    service.restart_sshd().map_err(|error| error.to_string())
-                }
-                SystemOperation::Refresh => Err("刷新应使用独立状态任务".to_string()),
+                .into()),
             }
         });
         cx.spawn_in(window, async move |entity, cx| {
             let result = task.await;
             let _ = entity.update_in(cx, |state, window, cx| {
-                let success = state.system.apply_operation(result);
+                let cancelled = matches!(
+                    &result,
+                    Err(ssh_router_app_core::AppError::Permission(
+                        ssh_router_app_core::PermissionError::Cancelled
+                    ))
+                );
+                let success = state
+                    .system
+                    .apply_operation(result.map_err(|error| error.to_string()));
                 if success {
                     state.notify(NotificationKind::Success, "系统操作已完成", cx);
                     state.start_status_refresh(window, cx);
                 } else {
                     let message = state.system.error.clone().unwrap_or_default();
-                    if message.contains("取消") {
+                    if cancelled {
                         state.notify(NotificationKind::Info, "已取消管理员权限操作", cx);
                     } else {
                         state.notify_error(format!("系统操作失败：{message}"), cx);

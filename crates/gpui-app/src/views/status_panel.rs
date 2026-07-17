@@ -51,15 +51,28 @@ pub fn status_panel(
         )
         .child(div().text_sm().text_color(theme.text_muted).child(detail))
         .child(status_item(
-            "CLI",
+            "CLI 部署",
             status
                 .map(|value| {
-                    if value.cli_up_to_date {
-                        "已部署且为最新"
-                    } else if value.cli_deployed {
-                        "已部署但版本不一致"
+                    if value.cli_deployed {
+                        "已部署"
                     } else {
                         "未部署"
+                    }
+                })
+                .unwrap_or("未检查"),
+            theme,
+        ))
+        .child(status_item(
+            "CLI 版本",
+            status
+                .map(|value| {
+                    if !value.cli_deployed {
+                        "未部署"
+                    } else if value.cli_up_to_date {
+                        "与当前应用一致"
+                    } else {
+                        "与当前应用不一致"
                     }
                 })
                 .unwrap_or("未检查"),
@@ -99,6 +112,19 @@ pub fn status_panel(
                         "已存在"
                     } else {
                         "不存在"
+                    }
+                })
+                .unwrap_or("未检查"),
+            theme,
+        ))
+        .child(status_item(
+            "DefaultShell 值",
+            status
+                .map(|value| {
+                    if value.default_shell.is_empty() {
+                        "未设置"
+                    } else {
+                        value.default_shell.as_str()
                     }
                 })
                 .unwrap_or("未检查"),

@@ -235,4 +235,34 @@ mod tests {
         assert_eq!(state.running, None);
         assert!(state.begin_operation(SystemOperation::SetDefaultShell));
     }
+
+    #[test]
+    fn fake_service_failure_keeps_error_and_allows_retry() {
+        let mut fake = FakeService {
+            statuses: VecDeque::from([Err("服务不可用".to_string())]),
+            operations: VecDeque::new(),
+        };
+        let mut state = SystemStatusState::default();
+
+        assert!(state.begin_refresh());
+        state.apply_refresh(fake.check_status());
+
+        assert_eq!(state.error.as_deref(), Some("服务不可用"));
+        assert!(state.begin_refresh());
+    }
+
+    #[test]
+    fn fake_service_operation_rejects_duplicate_click() {
+        let mut fake = FakeService {
+            statuses: VecDeque::new(),
+            operations: VecDeque::from([Ok(OperationMessage {
+                message: "完成".to_string(),
+            })]),
+        };
+        let mut state = SystemStatusState::default();
+
+        assert!(state.begin_operation(SystemOperation::RestartSshd));
+        assert!(!state.begin_operation(SystemOperation::RestartSshd));
+        assert!(state.apply_operation(fake.run_operation()));
+    }
 }
