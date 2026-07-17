@@ -3,6 +3,8 @@ param(
     [ValidateRange(1, 1000)][int]$Iterations = 10,
     [ValidateRange(1, 300)][int]$TimeoutSeconds = 30,
     [ValidateSet("Marker", "InputIdle")][string]$ReadyMode = "Marker",
+    [ValidateRange(1, 100)][int]$MinimumProcessCount = 1,
+    [bool]$RequireMainWindow = $false,
     [string]$Output = "startup-results.csv"
 )
 
@@ -12,6 +14,20 @@ $previousInstance = $env:SSH_ROUTER_INSTANCE_NAME
 $results = @()
 $process = $null
 $marker = $null
+function Get-ProcessTreeCount {
+    param([int]$RootProcessId)
+    $ids = [Collections.Generic.HashSet[int]]::new()
+    $queue = [Collections.Generic.Queue[int]]::new()
+    $queue.Enqueue($RootProcessId)
+    while ($queue.Count -gt 0) {
+        $parent = $queue.Dequeue()
+        if (-not $ids.Add($parent)) { continue }
+        Get-CimInstance Win32_Process -Filter "ParentProcessId = $parent" -ErrorAction SilentlyContinue | ForEach-Object {
+            $queue.Enqueue([int]$_.ProcessId)
+        }
+    }
+    return $ids.Count
+}
 try {
     for ($iteration = 1; $iteration -le $Iterations; $iteration++) {
         $marker = Join-Path $env:TEMP "ssh-router-startup-$PID-$iteration.marker"
@@ -39,10 +55,25 @@ try {
             }
         }
         $timer.Stop()
+        $startupMilliseconds = [Math]::Round($timer.Elapsed.TotalMilliseconds, 2)
+        # 防止单实例二次启动刚进入消息循环便退出，被误记为完整冷启动。
+        Start-Sleep -Milliseconds 500
+        $process.Refresh()
+        if ($process.HasExited) { throw "Application exited after reporting ready; another instance may already be running" }
+        $processCount = Get-ProcessTreeCount $process.Id
+        if ($processCount -lt $MinimumProcessCount) {
+            throw "Process tree contains $processCount process(es), expected at least $MinimumProcessCount"
+        }
+        $mainWindowHandle = $process.MainWindowHandle.ToInt64()
+        if ($RequireMainWindow -and $mainWindowHandle -eq 0) {
+            throw "Application reported ready without a main window"
+        }
         $results += [pscustomobject]@{
             Iteration = $iteration
             ReadyMode = $ReadyMode
-            StartupMilliseconds = [Math]::Round($timer.Elapsed.TotalMilliseconds, 2)
+            StartupMilliseconds = $startupMilliseconds
+            ProcessCount = $processCount
+            MainWindowHandle = $mainWindowHandle
         }
         if (-not $process.HasExited) { $process.Kill() }
         $process.WaitForExit(5000) | Out-Null

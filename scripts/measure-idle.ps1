@@ -52,24 +52,39 @@ try {
     }
     Start-Sleep -Seconds $WarmupSeconds
     $samples = @()
-    $processes = @(Get-ProcessTree $process)
-    $previousCpu = ($processes | ForEach-Object { $_.TotalProcessorTime.TotalMilliseconds } | Measure-Object -Sum).Sum
+    $previousCpuById = @{}
+    @(Get-ProcessTree $process) | ForEach-Object {
+        $_.Refresh()
+        $previousCpuById[$_.Id] = $_.TotalProcessorTime.TotalMilliseconds
+    }
     $previousTime = [DateTime]::UtcNow
     for ($elapsed = 0; $elapsed -lt $ObservationSeconds; $elapsed += $IntervalSeconds) {
         Start-Sleep -Seconds $IntervalSeconds
-        $processes = @($processes | Where-Object { -not $_.HasExited })
-        $processes | ForEach-Object { $_.Refresh() }
+        # 子进程可能在观察期间启动或重启，因此每轮重新发现整棵进程树。
+        $processes = @(Get-ProcessTree $process)
+        $nextCpuById = @{}
+        $cpuDelta = 0.0
+        $processes | ForEach-Object {
+            $_.Refresh()
+            $currentCpu = $_.TotalProcessorTime.TotalMilliseconds
+            if ($previousCpuById.ContainsKey($_.Id)) {
+                $cpuDelta += [Math]::Max(0, $currentCpu - $previousCpuById[$_.Id])
+            } else {
+                # 新发现的进程在当前采样区间内创建，其累计 CPU 均属于本区间。
+                $cpuDelta += $currentCpu
+            }
+            $nextCpuById[$_.Id] = $currentCpu
+        }
         $now = [DateTime]::UtcNow
-        $cpu = ($processes | ForEach-Object { $_.TotalProcessorTime.TotalMilliseconds } | Measure-Object -Sum).Sum
         $wall = ($now - $previousTime).TotalMilliseconds
         $samples += [pscustomobject]@{
             TimestampUtc = $now.ToString("o")
             ProcessCount = $processes.Count
             WorkingSetMiB = [Math]::Round((($processes.WorkingSet64 | Measure-Object -Sum).Sum) / 1MB, 2)
             PrivateBytesMiB = [Math]::Round((($processes.PrivateMemorySize64 | Measure-Object -Sum).Sum) / 1MB, 2)
-            CpuPercent = [Math]::Round((($cpu - $previousCpu) / $wall / [Environment]::ProcessorCount) * 100, 3)
+            CpuPercent = [Math]::Round(($cpuDelta / $wall / [Environment]::ProcessorCount) * 100, 3)
         }
-        $previousCpu = $cpu
+        $previousCpuById = $nextCpuById
         $previousTime = $now
     }
     $samples | Export-Csv $Output -NoTypeInformation -Encoding UTF8

@@ -15,8 +15,10 @@
 旧版 v0.0.8 不支持该标记，使用系统输入空闲事件：
 
 ```powershell
-./scripts/measure-startup.ps1 -Executable "C:\path\v0.0.8\ssh-router.exe" -ReadyMode InputIdle -Iterations 10
+./scripts/measure-startup.ps1 -Executable "C:\path\v0.0.8\ssh-router.exe" -ReadyMode InputIdle -Iterations 10 -MinimumProcessCount 2 -RequireMainWindow $true
 ```
+
+旧版采样前必须确认同一 Windows 会话中没有任何 SSH Router 实例。CSV 中每轮必须有非零 `MainWindowHandle`，且 `ProcessCount` 至少为 2，以排除单实例二次启动退出并证明 WebView 进程树已创建。
 
 ## 空闲资源
 
@@ -35,3 +37,5 @@
 记录根进程及其后代进程汇总的 Working Set、Private Bytes 和按逻辑处理器归一化的 CPU；这使多进程旧版与单进程 GPUI 使用一致的应用级口径。可用 `-IncludeDescendants $false` 仅采样根进程。
 
 旧版基线必须使用已发布的 v0.0.8 安装包；GPUI 基线使用对应发布候选安装包。不要使用修改过的本地 Tauri 构建链。
+
+当前记录：[v0.0.8 已发布版本](baselines/2026-07-17-v0.0.8-tauri.md) · [GPUI MVP 发布候选](baselines/2026-07-17-gpui-mvp.md)
