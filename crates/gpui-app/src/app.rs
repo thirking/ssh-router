@@ -11,6 +11,7 @@ use crate::components::{
     ButtonVariant, StatusKind,
 };
 use crate::theme::AppTheme;
+use crate::views::config_main_window;
 
 impl AppState {
     fn on_focus_next(&mut self, _: &FocusNext, window: &mut Window, _: &mut Context<Self>) {
@@ -79,6 +80,7 @@ impl Render for AppState {
                     .child(status_badge("GPUI MVP", StatusKind::Success, theme)),
             )
             .child(text_field("路由名称", &self.input, theme))
+            .child(config_main_window(&self.config, &self.route_editor, theme))
             .child(
                 div()
                     .flex()

@@ -7073,6 +7073,8 @@ version = "0.0.8"
 dependencies = [
  "gpui",
  "gpui-component",
+ "ssh-router-app-core",
+ "ssh-router-config",
 ]
 
 [[package]]

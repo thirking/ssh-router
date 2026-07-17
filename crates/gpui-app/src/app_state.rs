@@ -1,6 +1,8 @@
 use gpui::{AppContext, Context, Entity, FocusHandle, SharedString, Window};
 use gpui_component::input::InputState;
 
+use crate::{config_state::ConfigState, route_editor_state::RouteEditorState};
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum NotificationKind {
     Success,
@@ -23,6 +25,8 @@ pub struct ModalState {
 }
 
 pub struct AppState {
+    pub config: ConfigState,
+    pub route_editor: RouteEditorState,
     pub input: Entity<InputState>,
     pub modal: Option<ModalState>,
     pub notifications: Vec<Notification>,
@@ -42,6 +46,8 @@ impl AppState {
                 .default_value("PowerShell")
         });
         Self {
+            config: ConfigState::from_loaded(ssh_router_config::Config::default_config()),
+            route_editor: RouteEditorState::default(),
             input,
             modal: None,
             notifications: vec![Notification {
