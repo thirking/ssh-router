@@ -47,11 +47,11 @@ impl AppState {
     fn on_create_default_config(
         &mut self,
         _: &CreateDefaultConfig,
-        _: &mut Window,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         #[cfg(windows)]
-        self.create_default_config(cx);
+        self.create_default_config(window, cx);
         #[cfg(not(windows))]
         self.notify(NotificationKind::Info, "创建配置仅支持 Windows", cx);
     }
@@ -63,8 +63,8 @@ impl Render for AppState {
         let entity = cx.entity().downgrade();
         let on_edit = Rc::new({
             let entity = entity.clone();
-            move |id: u64, _: &ClickEvent, _: &mut Window, cx: &mut App| {
-                let _ = entity.update(cx, |state, cx| state.edit_route(id, cx));
+            move |id: u64, _: &ClickEvent, window: &mut Window, cx: &mut App| {
+                let _ = entity.update(cx, |state, cx| state.edit_route(id, window, cx));
             }
         });
         let on_delete = Rc::new(
@@ -72,6 +72,34 @@ impl Render for AppState {
                 let _ = entity.update(cx, |state, cx| state.delete_route(id, cx));
             },
         );
+        let on_add = Rc::new({
+            let entity = cx.entity().downgrade();
+            move |_: &ClickEvent, window: &mut Window, cx: &mut App| {
+                let _ = entity.update(cx, |state, cx| state.start_new_route(window, cx));
+            }
+        });
+        let on_save_route = Rc::new({
+            let entity = cx.entity().downgrade();
+            move |_: &ClickEvent, window: &mut Window, cx: &mut App| {
+                let _ = entity.update(cx, |state, cx| state.save_route_edit(window, cx));
+            }
+        });
+        let on_cancel_route = Rc::new({
+            let entity = cx.entity().downgrade();
+            move |_: &ClickEvent, window: &mut Window, cx: &mut App| {
+                let _ = entity.update(cx, |state, cx| state.cancel_route_edit(window, cx));
+            }
+        });
+        let on_default = Rc::new({
+            let entity = cx.entity().downgrade();
+            move |checked: &bool, _: &mut Window, cx: &mut App| {
+                let _ = entity.update(cx, |state, cx| {
+                    state.route_editor.route.default = *checked;
+                    state.refresh_route_validation();
+                    cx.notify();
+                });
+            }
+        });
         let content = div()
             .id("ssh-router-app")
             .key_context(APP_KEY_CONTEXT)
@@ -121,9 +149,14 @@ impl Render for AppState {
             .child(config_main_window(
                 &self.config,
                 &self.route_editor,
+                &self.route_inputs,
                 theme,
                 on_edit,
                 on_delete,
+                on_add,
+                on_save_route,
+                on_cancel_route,
+                on_default,
             ))
             .child(
                 div()
@@ -165,9 +198,9 @@ impl Render for AppState {
                                 &self.create_focus,
                                 window,
                                 theme,
-                                cx.listener(|this, _, _, cx| {
+                                cx.listener(|this, _, window, cx| {
                                     #[cfg(windows)]
-                                    this.create_default_config(cx);
+                                    this.create_default_config(window, cx);
                                     #[cfg(not(windows))]
                                     this.notify(
                                         NotificationKind::Info,
@@ -288,7 +321,7 @@ pub fn run() {
             |window, cx| {
                 let app = cx.new(|cx| AppState::new(window, cx));
                 #[cfg(windows)]
-                app.update(cx, |state, cx| state.start_config_load(cx));
+                app.update(cx, |state, cx| state.start_config_load(window, cx));
                 cx.new(|cx| Root::new(app, window, cx))
             },
         );

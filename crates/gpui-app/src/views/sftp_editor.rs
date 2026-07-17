@@ -1,8 +1,9 @@
-use gpui::{div, prelude::*, AnyElement, IntoElement, SharedString};
+use gpui::{div, prelude::*, AnyElement, Entity, IntoElement};
+use gpui_component::input::{Input, InputState};
 
 use crate::theme::AppTheme;
 
-pub fn sftp_editor(command: impl Into<SharedString>, theme: AppTheme) -> AnyElement {
+pub fn sftp_editor(input: &Entity<InputState>, theme: AppTheme) -> AnyElement {
     div()
         .flex()
         .flex_col()
@@ -13,14 +14,6 @@ pub fn sftp_editor(command: impl Into<SharedString>, theme: AppTheme) -> AnyElem
                 .text_color(theme.text_muted)
                 .child("SFTP 命令"),
         )
-        .child(
-            div()
-                .p_3()
-                .border_1()
-                .border_color(theme.border)
-                .bg(theme.surface)
-                .text_color(theme.text)
-                .child(command.into()),
-        )
+        .child(Input::new(input).w_full())
         .into_any_element()
 }

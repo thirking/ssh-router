@@ -1,7 +1,10 @@
-use gpui::{AppContext, Context, Entity, FocusHandle, SharedString, Window};
-use gpui_component::input::InputState;
+use gpui::{AppContext, Context, Entity, FocusHandle, SharedString, Subscription, Window};
+use gpui_component::input::{InputEvent, InputState};
 
-use crate::{config_state::ConfigState, route_editor_state::RouteEditorState};
+use crate::{
+    config_state::ConfigState,
+    route_editor_state::{RouteEditorInputs, RouteEditorState},
+};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum NotificationKind {
@@ -27,6 +30,7 @@ pub struct ModalState {
 pub struct AppState {
     pub config: ConfigState,
     pub route_editor: RouteEditorState,
+    pub route_inputs: RouteEditorInputs,
     pub input: Entity<InputState>,
     pub modal: Option<ModalState>,
     pub notifications: Vec<Notification>,
@@ -37,6 +41,7 @@ pub struct AppState {
     pub save_focus: FocusHandle,
     pub create_focus: FocusHandle,
     pub modal_focus: FocusHandle,
+    _route_subscriptions: Vec<Subscription>,
     next_notification_id: u64,
 }
 
@@ -47,9 +52,79 @@ impl AppState {
                 .placeholder("输入路由名称以验证中文 IME")
                 .default_value("PowerShell")
         });
+        let route_inputs = RouteEditorInputs::new(window, cx);
+        let subscriptions = vec![
+            cx.subscribe(&route_inputs.port, |this, input, event: &InputEvent, cx| {
+                if matches!(event, InputEvent::Change) {
+                    this.route_editor.route.port = input.read(cx).value().to_string();
+                    this.refresh_route_validation();
+                    cx.notify();
+                }
+            }),
+            cx.subscribe(&route_inputs.name, |this, input, event: &InputEvent, cx| {
+                if matches!(event, InputEvent::Change) {
+                    this.route_editor.route.name = input.read(cx).value().to_string();
+                    this.refresh_route_validation();
+                    cx.notify();
+                }
+            }),
+            cx.subscribe(
+                &route_inputs.shell,
+                |this, input, event: &InputEvent, cx| {
+                    if matches!(event, InputEvent::Change) {
+                        this.route_editor.route.shell = input.read(cx).value().to_string();
+                        this.refresh_route_validation();
+                        cx.notify();
+                    }
+                },
+            ),
+            cx.subscribe(
+                &route_inputs.interactive_template,
+                |this, input, event: &InputEvent, cx| {
+                    if matches!(event, InputEvent::Change) {
+                        this.route_editor.route.interactive_template =
+                            input.read(cx).value().to_string();
+                        this.refresh_route_validation();
+                        cx.notify();
+                    }
+                },
+            ),
+            cx.subscribe(
+                &route_inputs.command_template,
+                |this, input, event: &InputEvent, cx| {
+                    if matches!(event, InputEvent::Change) {
+                        this.route_editor.route.command_template =
+                            input.read(cx).value().to_string();
+                        this.refresh_route_validation();
+                        cx.notify();
+                    }
+                },
+            ),
+            cx.subscribe(
+                &route_inputs.tmp_file_ext,
+                |this, input, event: &InputEvent, cx| {
+                    if matches!(event, InputEvent::Change) {
+                        this.route_editor.route.tmp_file_ext = input.read(cx).value().to_string();
+                        this.refresh_route_validation();
+                        cx.notify();
+                    }
+                },
+            ),
+            cx.subscribe(
+                &route_inputs.sftp_command,
+                |this, input, event: &InputEvent, cx| {
+                    if matches!(event, InputEvent::Change) {
+                        this.config
+                            .set_sftp_command(input.read(cx).value().to_string());
+                        cx.notify();
+                    }
+                },
+            ),
+        ];
         Self {
             config: ConfigState::default(),
             route_editor: RouteEditorState::default(),
+            route_inputs,
             input,
             modal: None,
             notifications: vec![Notification {
@@ -64,12 +139,25 @@ impl AppState {
             save_focus: cx.focus_handle().tab_index(13).tab_stop(true),
             create_focus: cx.focus_handle().tab_index(14).tab_stop(true),
             modal_focus: cx.focus_handle().tab_index(20).tab_stop(true),
+            _route_subscriptions: subscriptions,
             next_notification_id: 2,
         }
     }
 
     fn notify_error(&mut self, message: impl Into<SharedString>, cx: &mut Context<Self>) {
         self.notify(NotificationKind::Error, message, cx);
+    }
+
+    pub(crate) fn refresh_route_validation(&mut self) {
+        let Ok(route) = self.route_editor.validate() else {
+            return;
+        };
+        if let Err(error) = self
+            .config
+            .validate_route_candidate(self.route_editor.editing_id, route)
+        {
+            self.route_editor.errors.push(error);
+        }
     }
 
     #[cfg(windows)]
@@ -100,7 +188,7 @@ impl AppState {
     }
 
     #[cfg(windows)]
-    pub fn create_default_config(&mut self, cx: &mut Context<Self>) {
+    pub fn create_default_config(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         use ssh_router_app_core::platform::windows::WindowsPlatform;
         use ssh_router_app_core::{ConfigRepository, ConfigService};
 
@@ -111,11 +199,16 @@ impl AppState {
                 .create_default()
                 .map_err(|error| error.to_string())
         });
-        cx.spawn(async move |entity, cx| {
+        cx.spawn_in(window, async move |entity, cx| {
             let result = task.await;
-            let _ = entity.update(cx, |state, cx| match result {
+            let _ = entity.update_in(cx, |state, window, cx| match result {
                 Ok(config) => {
                     state.config.apply_loaded(config);
+                    state.route_inputs.set_sftp_command(
+                        state.config.sftp_command.clone(),
+                        window,
+                        cx,
+                    );
                     state.notify(NotificationKind::Success, "已创建默认配置", cx);
                 }
                 Err(error) => state.notify_error(format!("创建默认配置失败：{error}"), cx),
@@ -125,7 +218,7 @@ impl AppState {
     }
 
     #[cfg(windows)]
-    pub fn start_config_load(&mut self, cx: &mut Context<Self>) {
+    pub fn start_config_load(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         use ssh_router_app_core::platform::windows::WindowsPlatform;
         use ssh_router_app_core::{ConfigRepository, ConfigService};
 
@@ -139,10 +232,13 @@ impl AppState {
             }
         };
         let task = cx.background_spawn(async move { repository.load() });
-        cx.spawn(async move |entity, cx| {
+        cx.spawn_in(window, async move |entity, cx| {
             let result = task.await;
-            let _ = entity.update(cx, |state, cx| {
+            let _ = entity.update_in(cx, |state, window, cx| {
                 state.config.apply_load_result(result);
+                state
+                    .route_inputs
+                    .set_sftp_command(state.config.sftp_command.clone(), window, cx);
                 cx.notify();
             });
         })
@@ -180,10 +276,52 @@ impl AppState {
         cx.notify();
     }
 
-    pub fn edit_route(&mut self, id: u64, cx: &mut Context<Self>) {
+    pub fn edit_route(&mut self, id: u64, window: &mut Window, cx: &mut Context<Self>) {
         if let Some(item) = self.config.routes.iter().find(|item| item.id == id) {
             self.route_editor = RouteEditorState::new(Some((id, item.route.clone())));
+            self.route_inputs
+                .set_route(&self.route_editor.route, window, cx);
             cx.notify();
+        }
+    }
+
+    pub fn start_new_route(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.route_editor = RouteEditorState::default();
+        self.route_inputs
+            .set_route(&self.route_editor.route, window, cx);
+        cx.notify();
+    }
+
+    pub fn cancel_route_edit(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.route_editor.cancel();
+        self.route_editor = RouteEditorState::default();
+        self.route_inputs
+            .set_route(&self.route_editor.route, window, cx);
+        cx.notify();
+    }
+
+    pub fn save_route_edit(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        match self.route_editor.validate() {
+            Ok(route) => {
+                if let Err(error) = self
+                    .config
+                    .validate_route_candidate(self.route_editor.editing_id, route.clone())
+                {
+                    self.route_editor.errors.push(error.clone());
+                    self.notify_error(error, cx);
+                    return;
+                }
+                if let Some(id) = self.route_editor.editing_id {
+                    self.config.update_route(id, route);
+                } else {
+                    self.config.add_route(route);
+                }
+                self.route_editor = RouteEditorState::default();
+                self.route_inputs
+                    .set_route(&self.route_editor.route, window, cx);
+                self.notify(NotificationKind::Success, "路由草稿已更新", cx);
+            }
+            Err(errors) => self.notify_error(errors.join("；"), cx),
         }
     }
 

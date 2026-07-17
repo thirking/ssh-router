@@ -1,5 +1,7 @@
 #![allow(dead_code)]
 
+use gpui::{AppContext, Context, Entity, Window};
+use gpui_component::input::InputState;
 use ssh_router_config::Route;
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -7,6 +9,67 @@ pub struct RouteEditorState {
     pub route: RouteDraft,
     pub editing_id: Option<u64>,
     pub errors: Vec<String>,
+}
+
+pub struct RouteEditorInputs {
+    pub port: Entity<InputState>,
+    pub name: Entity<InputState>,
+    pub shell: Entity<InputState>,
+    pub interactive_template: Entity<InputState>,
+    pub command_template: Entity<InputState>,
+    pub tmp_file_ext: Entity<InputState>,
+    pub sftp_command: Entity<InputState>,
+}
+
+impl RouteEditorInputs {
+    pub fn new(window: &mut Window, cx: &mut Context<crate::app_state::AppState>) -> Self {
+        let mut new_input =
+            |cx: &mut Context<crate::app_state::AppState>| cx.new(|cx| InputState::new(window, cx));
+        Self {
+            port: new_input(cx),
+            name: new_input(cx),
+            shell: new_input(cx),
+            interactive_template: new_input(cx),
+            command_template: new_input(cx),
+            tmp_file_ext: cx.new(|cx| InputState::new(window, cx).default_value(".sh")),
+            sftp_command: cx.new(|cx| InputState::new(window, cx)),
+        }
+    }
+
+    pub fn set_sftp_command(
+        &self,
+        value: String,
+        window: &mut Window,
+        cx: &mut Context<crate::app_state::AppState>,
+    ) {
+        self.sftp_command.update(cx, |input, input_cx| {
+            input.set_value(value, window, input_cx)
+        });
+    }
+
+    pub fn set_route(
+        &self,
+        route: &RouteDraft,
+        window: &mut Window,
+        cx: &mut Context<crate::app_state::AppState>,
+    ) {
+        let values = [
+            (&self.port, route.port.clone()),
+            (&self.name, route.name.clone()),
+            (&self.shell, route.shell.clone()),
+            (
+                &self.interactive_template,
+                route.interactive_template.clone(),
+            ),
+            (&self.command_template, route.command_template.clone()),
+            (&self.tmp_file_ext, route.tmp_file_ext.clone()),
+        ];
+        for (input, value) in values {
+            input.update(cx, |input, input_cx| {
+                input.set_value(value, window, input_cx)
+            });
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -104,5 +167,44 @@ impl RouteDraft {
             tmp_file_ext: self.tmp_file_ext,
             default: self.default,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn valid_draft_converts_to_route() {
+        let mut editor = RouteEditorState {
+            route: RouteDraft {
+                port: "2200".to_string(),
+                name: "测试路由".to_string(),
+                shell: "pwsh.exe".to_string(),
+                interactive_template: "{shell} -l".to_string(),
+                command_template: "{shell} -File {tmpfile}".to_string(),
+                tmp_file_ext: ".ps1".to_string(),
+                default: false,
+            },
+            editing_id: None,
+            errors: Vec::new(),
+        };
+
+        let route = editor.validate().expect("有效草稿应通过校验");
+
+        assert_eq!(route.port, 2200);
+        assert_eq!(route.name, "测试路由");
+    }
+
+    #[test]
+    fn cancelling_editor_does_not_change_source_route() {
+        let source = ssh_router_config::Config::default_config().routes[0].clone();
+        let mut editor = RouteEditorState::new(Some((7, source.clone())));
+        editor.route.name = "未保存名称".to_string();
+
+        editor.cancel();
+
+        assert_eq!(source.name, "PowerShell");
+        assert_eq!(editor.editing_id, Some(7));
     }
 }

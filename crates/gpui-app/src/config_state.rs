@@ -164,6 +164,13 @@ impl ConfigState {
         true
     }
 
+    pub fn set_sftp_command(&mut self, command: String) {
+        if self.sftp_command != command {
+            self.sftp_command = command;
+            self.is_dirty = true;
+        }
+    }
+
     pub fn validate(&mut self) -> Result<(), ConfigStateError> {
         validate_config(&self.to_config()).map_err(|error| {
             let error = ConfigStateError::Validation(error.to_string());
@@ -172,6 +179,23 @@ impl ConfigState {
         })?;
         self.error = None;
         Ok(())
+    }
+
+    pub fn validate_route_candidate(
+        &self,
+        editing_id: Option<u64>,
+        route: Route,
+    ) -> Result<(), String> {
+        let mut candidate = self.to_config();
+        if let Some(id) = editing_id {
+            let Some(index) = self.routes.iter().position(|item| item.id == id) else {
+                return Err("待编辑路由不存在".to_string());
+            };
+            candidate.routes[index] = route;
+        } else {
+            candidate.routes.push(route);
+        }
+        validate_config(&candidate).map_err(|error| error.to_string())
     }
 
     pub fn apply_save_result(
@@ -266,5 +290,15 @@ mod tests {
         assert!(state.apply_save_result(Err("权限不足")).is_err());
         assert!(state.is_dirty);
         assert_eq!(state.sftp_command, "changed");
+    }
+
+    #[test]
+    fn changing_sftp_command_marks_draft_dirty() {
+        let mut state = ConfigState::from_loaded(Config::default_config());
+
+        state.set_sftp_command("internal-sftp".to_string());
+
+        assert!(state.is_dirty);
+        assert_eq!(state.sftp_command, "internal-sftp");
     }
 }
