@@ -108,7 +108,28 @@ impl SystemStatusState {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::VecDeque;
+
     use super::*;
+
+    struct FakeService {
+        statuses: VecDeque<Result<SystemStatus, String>>,
+        operations: VecDeque<Result<OperationMessage, String>>,
+    }
+
+    impl FakeService {
+        fn check_status(&mut self) -> Result<SystemStatus, String> {
+            self.statuses
+                .pop_front()
+                .expect("fake service 应预置状态结果")
+        }
+
+        fn run_operation(&mut self) -> Result<OperationMessage, String> {
+            self.operations
+                .pop_front()
+                .expect("fake service 应预置操作结果")
+        }
+    }
 
     fn status(cli_deployed: bool, cli_up_to_date: bool) -> SystemStatus {
         SystemStatus {
@@ -179,5 +200,39 @@ mod tests {
             }))
         );
         assert!(state.begin_refresh());
+    }
+
+    #[test]
+    fn fake_service_success_refresh_then_operation_then_refresh() {
+        let mut fake = FakeService {
+            statuses: VecDeque::from([Ok(status(false, false)), Ok(status(true, true))]),
+            operations: VecDeque::from([Ok(OperationMessage {
+                message: "CLI 安装或更新完成".to_string(),
+            })]),
+        };
+        let mut state = SystemStatusState::default();
+
+        assert!(state.begin_refresh());
+        state.apply_refresh(fake.check_status());
+        assert!(state.begin_operation(SystemOperation::InstallCli));
+        assert!(state.apply_operation(fake.run_operation()));
+        assert!(state.begin_refresh());
+        state.apply_refresh(fake.check_status());
+
+        assert_eq!(state.status, Some(status(true, true)));
+    }
+
+    #[test]
+    fn fake_service_cancel_is_neutral_and_retryable() {
+        let mut fake = FakeService {
+            statuses: VecDeque::new(),
+            operations: VecDeque::from([Err("用户取消了管理员权限操作".to_string())]),
+        };
+        let mut state = SystemStatusState::default();
+
+        assert!(state.begin_operation(SystemOperation::SetDefaultShell));
+        assert!(!state.apply_operation(fake.run_operation()));
+        assert_eq!(state.running, None);
+        assert!(state.begin_operation(SystemOperation::SetDefaultShell));
     }
 }

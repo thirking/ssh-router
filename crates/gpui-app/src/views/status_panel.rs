@@ -91,6 +91,26 @@ pub fn status_panel(
                 .unwrap_or("未检查"),
             theme,
         ))
+        .child(status_item(
+            "配置",
+            status
+                .map(|value| {
+                    if value.config_exists {
+                        "已存在"
+                    } else {
+                        "不存在"
+                    }
+                })
+                .unwrap_or("未检查"),
+            theme,
+        ))
+        .child(status_item(
+            "CLI 路径",
+            status
+                .map(|value| value.cli_path.as_str())
+                .unwrap_or("未检查"),
+            theme,
+        ))
         .into_any_element()
 }
 
