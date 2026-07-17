@@ -50,6 +50,7 @@
 - [新增路由](evidence/route-added.png)
 - [删除路由](evidence/route-deleted.png)
 - [生命周期原始数据](evidence/lifecycle.json)
+- [640×520 缩放结果](evidence/resize.json)
 
 ## 剩余环境条件
 
