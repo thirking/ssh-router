@@ -48,10 +48,17 @@ pub struct AppState {
     next_notification_id: u64,
     #[cfg(windows)]
     _tray_icon: Option<ssh_router_app_core::platform::windows::tray::TrayIcon>,
+    #[cfg(windows)]
+    _single_instance_guard:
+        ssh_router_app_core::platform::windows::single_instance::SingleInstanceGuard,
 }
 
 impl AppState {
-    pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
+    pub fn new(
+        window: &mut Window,
+        cx: &mut Context<Self>,
+        #[cfg(windows)] single_instance_guard: ssh_router_app_core::platform::windows::single_instance::SingleInstanceGuard,
+    ) -> Self {
         let input = cx.new(|cx| {
             InputState::new(window, cx)
                 .placeholder("输入路由名称以验证中文 IME")
@@ -157,7 +164,16 @@ impl AppState {
             next_notification_id: 2,
             #[cfg(windows)]
             _tray_icon: tray_icon,
+            #[cfg(windows)]
+            _single_instance_guard: single_instance_guard,
         }
+    }
+
+    pub fn tray_available(&self) -> bool {
+        #[cfg(windows)]
+        return self._tray_icon.is_some();
+        #[cfg(not(windows))]
+        false
     }
 
     fn notify_error(&mut self, message: impl Into<SharedString>, cx: &mut Context<Self>) {

@@ -5,7 +5,8 @@ use windows::core::PCWSTR;
 use windows::Win32::Foundation::{CloseHandle, GetLastError, ERROR_ALREADY_EXISTS, HANDLE, HWND};
 use windows::Win32::System::Threading::CreateMutexW;
 use windows::Win32::UI::WindowsAndMessaging::{
-    FindWindowW, SetForegroundWindow, ShowWindow, SW_RESTORE, SW_SHOW,
+    FindWindowW, PostMessageW, RegisterWindowMessageW, SetForegroundWindow, ShowWindow,
+    HWND_BROADCAST, SW_RESTORE, SW_SHOW,
 };
 
 #[derive(Debug)]
@@ -46,6 +47,21 @@ impl Drop for SingleInstanceGuard {
 }
 
 pub fn activate_existing_window(title: &str) -> bool {
+    let activation_message =
+        unsafe { RegisterWindowMessageW(windows::core::w!("SSHRouter.ActivateMainWindow")) };
+    if activation_message != 0
+        && unsafe {
+            PostMessageW(
+                Some(HWND_BROADCAST),
+                activation_message,
+                windows::Win32::Foundation::WPARAM(0),
+                windows::Win32::Foundation::LPARAM(0),
+            )
+        }
+        .is_ok()
+    {
+        return true;
+    }
     let title = wide(title);
     let Ok(hwnd) = (unsafe { FindWindowW(None, PCWSTR(title.as_ptr())) }) else {
         return false;

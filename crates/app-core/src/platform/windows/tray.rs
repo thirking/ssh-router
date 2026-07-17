@@ -18,6 +18,7 @@ const OPEN_COMMAND: usize = 1001;
 const EXIT_COMMAND: usize = 1002;
 static EXIT_REQUESTED: AtomicBool = AtomicBool::new(false);
 static TASKBAR_CREATED_MESSAGE: AtomicU32 = AtomicU32::new(0);
+static ACTIVATE_MESSAGE: AtomicU32 = AtomicU32::new(0);
 
 pub struct TrayIcon {
     hwnd: HWND,
@@ -27,6 +28,10 @@ impl TrayIcon {
     pub fn install(hwnd: HWND, tooltip: &str) -> windows::core::Result<Self> {
         TASKBAR_CREATED_MESSAGE.store(
             unsafe { RegisterWindowMessageW(windows::core::w!("TaskbarCreated")) },
+            Ordering::Release,
+        );
+        ACTIVATE_MESSAGE.store(
+            unsafe { RegisterWindowMessageW(windows::core::w!("SSHRouter.ActivateMainWindow")) },
             Ordering::Release,
         );
         let data = notify_data(hwnd, tooltip);
@@ -70,6 +75,11 @@ unsafe extern "system" fn tray_window_proc(
         let data = notify_data(hwnd, "SSH Router");
         let _ = Shell_NotifyIconW(NIM_ADD, &data);
     }
+    if message == ACTIVATE_MESSAGE.load(Ordering::Acquire) {
+        let _ = ShowWindow(hwnd, SW_RESTORE);
+        let _ = ShowWindow(hwnd, SW_SHOW);
+        let _ = SetForegroundWindow(hwnd);
+    }
     if message == TRAY_MESSAGE {
         match lparam.0 as u32 {
             WM_LBUTTONDBLCLK => {
@@ -105,7 +115,9 @@ unsafe fn show_menu(hwnd: HWND) {
         }
         EXIT_COMMAND => {
             EXIT_REQUESTED.store(true, Ordering::Release);
-            let _ = PostMessageW(Some(hwnd), WM_CLOSE, WPARAM(0), LPARAM(0));
+            if PostMessageW(Some(hwnd), WM_CLOSE, WPARAM(0), LPARAM(0)).is_err() {
+                EXIT_REQUESTED.store(false, Ordering::Release);
+            }
         }
         _ => {}
     }

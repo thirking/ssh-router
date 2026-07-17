@@ -359,8 +359,6 @@ pub fn run() {
     };
 
     Application::new().run(move |cx: &mut App| {
-        #[cfg(windows)]
-        let _single_instance_guard = &single_instance;
         gpui_component::init(cx);
         cx.bind_keys([
             KeyBinding::new("tab", FocusNext, Some(APP_KEY_CONTEXT)),
@@ -381,9 +379,17 @@ pub fn run() {
                 }),
                 ..Default::default()
             },
-            |window, cx| {
-                crate::window_controller::install_close_to_tray(window, cx);
-                let app = cx.new(|cx| AppState::new(window, cx));
+            move |window, cx| {
+                let app = cx.new(|cx| {
+                    AppState::new(
+                        window,
+                        cx,
+                        #[cfg(windows)]
+                        single_instance,
+                    )
+                });
+                let tray_available = app.read(cx).tray_available();
+                crate::window_controller::install_close_to_tray(window, cx, tray_available);
                 #[cfg(windows)]
                 app.update(cx, |state, cx| {
                     state.start_config_load(window, cx);
