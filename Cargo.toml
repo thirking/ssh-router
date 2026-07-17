@@ -1,9 +1,3 @@
-# Workspace 成员随各自 crate 创建而逐步加入：
-#   - crates/config  (Task 1)
-#   - crates/cli     (Task 2)
-#   - src-tauri      (Task 7, 本任务)
-#   - crates/gpui-app (GPUI 原生 GUI 重写)
-#   - crates/app-core (桌面业务核心)
 [workspace]
 members = [
     "crates/config",
@@ -11,6 +5,5 @@ members = [
     "crates/app-core",
     "crates/gpui-app",
     "crates/update-packager",
-    "src-tauri",
 ]
 resolver = "2"

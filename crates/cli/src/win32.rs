@@ -40,7 +40,10 @@ use windows::Win32::System::Threading::{
 /// 将 &str 转为 UTF-16 null-terminated `Vec<u16>`。
 /// 移植自 C# 中 `Marshal.StringToHGlobalUni` 的用途。
 fn to_wide(s: &str) -> Vec<u16> {
-    OsStr::new(s).encode_wide().chain(std::iter::once(0)).collect()
+    OsStr::new(s)
+        .encode_wide()
+        .chain(std::iter::once(0))
+        .collect()
 }
 
 /// 获取最近一次 Win32 错误的可读文本。失败时回退到 `error <code>`。
@@ -99,12 +102,14 @@ pub fn create_kill_on_close_job(log: &dyn Fn(&str)) -> Option<isize> {
         info.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
 
         let size = std::mem::size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>();
-        if let Err(_) = SetInformationJobObject(
+        if SetInformationJobObject(
             h_job,
             JobObjectExtendedLimitInformation,
             &info as *const _ as *const _,
             size as u32,
-        ) {
+        )
+        .is_err()
+        {
             log(&format!(
                 "WARN: SetInformationJobObject failed, last error: {}",
                 last_error_message()
@@ -163,7 +168,7 @@ pub fn launch_and_wait(cmd_line: &str, job: isize, log: &dyn Fn(&str)) -> u32 {
         )
     };
 
-    if let Err(_) = created {
+    if created.is_err() {
         log(&format!(
             "ERROR: CreateProcess failed, last error: {}",
             last_error_message()
@@ -176,7 +181,7 @@ pub fn launch_and_wait(cmd_line: &str, job: isize, log: &dyn Fn(&str)) -> u32 {
         // CREATE_SUSPENDED 启动后、ResumeThread 前关联 Job，确保子进程被 Job 管控。
         if job != 0 {
             let h_job = HANDLE(job as *mut _);
-            if let Err(_) = AssignProcessToJobObject(h_job, pi.hProcess) {
+            if AssignProcessToJobObject(h_job, pi.hProcess).is_err() {
                 log(&format!(
                     "WARN: AssignProcessToJobObject failed, last error: {}",
                     last_error_message()
@@ -195,7 +200,7 @@ pub fn launch_and_wait(cmd_line: &str, job: isize, log: &dyn Fn(&str)) -> u32 {
         }
 
         // windows 0.61: GetExitCodeProcess(hprocess, *mut u32) -> Result<()>。
-        if let Err(_) = GetExitCodeProcess(pi.hProcess, &mut exit_code) {
+        if GetExitCodeProcess(pi.hProcess, &mut exit_code).is_err() {
             log(&format!(
                 "WARN: GetExitCodeProcess failed, last error: {}",
                 last_error_message()

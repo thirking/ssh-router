@@ -782,7 +782,7 @@ mod tests {
     }
 
     #[test]
-    fn keeps_tauri_passive_restart_arguments_for_nsis_update() {
+    fn keeps_passive_restart_arguments_for_nsis_update() {
         assert_eq!(NSIS_UPDATE_ARGS, ["/P", "/R", "/UPDATE"]);
     }
 }

@@ -49,7 +49,9 @@ mod tests {
 
     #[test]
     fn test_is_sftp_command() {
-        assert!(is_sftp_command("C:\\Windows\\System32\\OpenSSH\\sftp-server.exe"));
+        assert!(is_sftp_command(
+            "C:\\Windows\\System32\\OpenSSH\\sftp-server.exe"
+        ));
         assert!(!is_sftp_command("uname -s"));
     }
 
@@ -112,7 +114,10 @@ mod tests {
             None,
             Some("/mnt/c/tmp/ssh-cmd-123.sh"),
         );
-        assert_eq!(result, "wsl.exe -- bash -c '. \"/mnt/c/tmp/ssh-cmd-123.sh\"'");
+        assert_eq!(
+            result,
+            "wsl.exe -- bash -c '. \"/mnt/c/tmp/ssh-cmd-123.sh\"'"
+        );
     }
 
     #[test]

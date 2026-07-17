@@ -34,7 +34,10 @@ impl TempScript {
     }
 
     fn create_at(path: PathBuf, contents: &str) -> io::Result<Self> {
-        let mut file = OpenOptions::new().write(true).create_new(true).open(&path)?;
+        let mut file = OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&path)?;
         if let Err(error) = file.write_all(contents.as_bytes()) {
             let _ = fs::remove_file(&path);
             return Err(error);

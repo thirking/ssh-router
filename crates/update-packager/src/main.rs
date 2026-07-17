@@ -55,9 +55,9 @@ fn run() -> Result<(), String> {
         return verify_production_signature(&installer, &signature);
     }
     let options = parse_args(args)?;
-    let private_key = env::var("TAURI_SIGNING_PRIVATE_KEY")
-        .map_err(|_| "缺少 TAURI_SIGNING_PRIVATE_KEY".to_string())?;
-    let password = env::var("TAURI_SIGNING_PRIVATE_KEY_PASSWORD").ok();
+    let private_key = env::var("SSH_ROUTER_SIGNING_PRIVATE_KEY")
+        .map_err(|_| "缺少 SSH_ROUTER_SIGNING_PRIVATE_KEY".to_string())?;
+    let password = env::var("SSH_ROUTER_SIGNING_PRIVATE_KEY_PASSWORD").ok();
     package_with_public_key(&options, &private_key, password, UPDATE_PUBLIC_KEY)
 }
 

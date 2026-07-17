@@ -16,33 +16,21 @@ mod tests {
 
     #[test]
     fn test_drive_letter_path() {
-        assert_eq!(
-            to_wsl_path(r"C:\Users\test"),
-            "/mnt/c/Users/test"
-        );
+        assert_eq!(to_wsl_path(r"C:\Users\test"), "/mnt/c/Users/test");
     }
 
     #[test]
     fn test_lowercase_drive() {
-        assert_eq!(
-            to_wsl_path(r"D:\foo\bar"),
-            "/mnt/d/foo/bar"
-        );
+        assert_eq!(to_wsl_path(r"D:\foo\bar"), "/mnt/d/foo/bar");
     }
 
     #[test]
     fn test_no_drive_letter() {
-        assert_eq!(
-            to_wsl_path(r"foo\bar\baz"),
-            "foo/bar/baz"
-        );
+        assert_eq!(to_wsl_path(r"foo\bar\baz"), "foo/bar/baz");
     }
 
     #[test]
     fn test_already_slash() {
-        assert_eq!(
-            to_wsl_path(r"C:/Users/test"),
-            "/mnt/c/Users/test"
-        );
+        assert_eq!(to_wsl_path(r"C:/Users/test"), "/mnt/c/Users/test");
     }
 }

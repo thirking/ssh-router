@@ -9,7 +9,7 @@ Windows OpenSSH 多端口智能路由器，带可视化配置界面。
 双程序方案：
 
 - **ssh-router-cli.exe**：被 sshd 作为 `DefaultShell` 调起的路由 CLI（Rust），每次 SSH 连接时启动，根据配置文件路由到对应 shell
-- **ssh-router.exe**：Tauri v2 托盘 GUI，常驻系统托盘，可视化配置端口路由
+- **ssh-router.exe**：Rust + GPUI 原生托盘 GUI，常驻系统托盘，可视化配置端口路由
 
 两者通过 `C:\ProgramData\ssh\ssh-router.json` 配置文件解耦。CLI 每次被 sshd 调起时读取该 JSON，因此 GUI 中保存配置后下一次 SSH 连接立即生效，无需重启 sshd 或重新编译。
 
@@ -19,8 +19,10 @@ Windows OpenSSH 多端口智能路由器，带可视化配置界面。
 |------|------|
 | `crates/config/` | 共享 `Config` / `Route` 结构与默认配置（被 CLI 与 GUI 共用） |
 | `crates/cli/` | `ssh-router-cli.exe`：Win32 `CreateProcessW` + Job Object 路由实现 |
-| `src-tauri/` | `ssh-router.exe`：Tauri v2 后端（托盘 + 单实例 + Tauri 命令 + UAC 提权） |
-| `src/` | React + shadcn/ui 前端（路由管理 + 安装状态 + 快捷操作） |
+| `crates/app-core/` | 配置、状态、提权、托盘、单实例和签名更新业务核心 |
+| `crates/gpui-app/` | `ssh-router.exe`：GPUI 原生界面与 Windows 生命周期 |
+| `crates/update-packager/` | 发布安装包 minisign 签名与 `latest.json` 工具 |
+| `installer/` | NSIS 安装包脚本和 Windows 图标 |
 | `fix-sshd.ps1` | 一次性 sshd 修复脚本（保留） |
 
 ## 解决的问题
@@ -252,7 +254,7 @@ Restart-Service sshd -Force
 
 ### 发布签名维护
 
-- GitHub Actions 必须配置 `TAURI_SIGNING_PRIVATE_KEY` 和 `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` 两个 Secrets
+- GitHub Actions 继续读取既有 `TAURI_SIGNING_PRIVATE_KEY` 和 `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` 两个 Secrets，并映射到纯 Rust 签名工具使用的环境变量，无需迁移仓库密钥
 - 私钥必须使用密码加密，且不得提交到仓库；应用仅包含可公开的验证公钥
 - 发布前必须确认加密私钥及其密码已备份到独立的离线介质；丢失后，现有客户端将无法接受使用新密钥签名的更新
 - Release 工作流会校验版本号，并在发布后确认 `setup.exe`、签名文件和 `latest.json` 均已上传
@@ -264,6 +266,10 @@ Restart-Service sshd -Force
 - WSL 2（端口 2223 路由需要）
 - Git for Windows（端口 2222 路由需要）
 - PowerShell 7（端口 22 路由需要）
+
+## 性能基线
+
+启动时间、空闲内存和 CPU 的可重复采样方法见 [`docs/performance/README.md`](docs/performance/README.md)。MVP 仅记录数据，不设置发布失败阈值。
 
 ## 已知限制
 

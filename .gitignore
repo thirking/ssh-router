@@ -14,19 +14,8 @@ publish/
 /target
 /crates/*/target
 
-# Node.js
-node_modules/
-dist/
-.vite/
-package-lock.json
-
-# Tauri
-src-tauri/target/
-src-tauri/gen/
-# Tauri bundle install包产物 (build 后输出到 src-tauri/target/release/bundle/)
-src-tauri/target/release/bundle/
-# Tauri resources (CI 生成)
-src-tauri/resources/
+# 性能采样输出
+*-results.csv
 
 # macOS
 .DS_Store
@@ -40,4 +29,3 @@ src-tauri/resources/
 # ZCode 工作目录（含本机路径和评审 diff）
 .zcode/
 .superpowers/
-

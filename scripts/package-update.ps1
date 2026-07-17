@@ -8,8 +8,8 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-if (-not $env:TAURI_SIGNING_PRIVATE_KEY) {
-    throw "TAURI_SIGNING_PRIVATE_KEY is required"
+if (-not $env:SSH_ROUTER_SIGNING_PRIVATE_KEY) {
+    throw "SSH_ROUTER_SIGNING_PRIVATE_KEY is required"
 }
 
 $output = New-Item -ItemType Directory -Force -Path $OutputDirectory

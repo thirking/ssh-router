@@ -99,7 +99,7 @@ mod tests {
     }"#;
 
     #[test]
-    fn parses_tauri_v2_manifest() {
+    fn parses_legacy_update_manifest() {
         let manifest = UpdateManifest::parse(MANIFEST.as_bytes()).expect("元数据应可解析");
         let candidate = manifest
             .candidate_for("0.0.8", "windows-x86_64")

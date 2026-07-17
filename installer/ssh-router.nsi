@@ -22,8 +22,8 @@ InstallDirRegKey HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\SSH R
 RequestExecutionLevel user
 SetCompressor /SOLID lzma
 SetOverwrite on
-Icon "icon.ico"
-UninstallIcon "icon.ico"
+Icon "..\crates\gpui-app\assets\icon.ico"
+UninstallIcon "..\crates\gpui-app\assets\icon.ico"
 VIProductVersion "${VERSION_QUAD}"
 VIAddVersionKey "ProductName" "SSH Router"
 VIAddVersionKey "FileDescription" "SSH Router Installer"

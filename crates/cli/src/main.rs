@@ -1,8 +1,8 @@
 mod log;
-mod wsl;
-mod temp;
 mod routing;
+mod temp;
 mod win32;
+mod wsl;
 
 use std::fs;
 
@@ -12,11 +12,11 @@ use std::env;
 const CONFIG_PATH: &str = r"C:\ProgramData\ssh\ssh-router.json";
 
 fn port_log(port: &str) -> String {
-    format!("port: {}", port)
+    format!("port: {port}")
 }
 
 fn route_log(route: &str) -> String {
-    format!("route: {}", route)
+    format!("route: {route}")
 }
 
 #[cfg(windows)]
@@ -34,10 +34,7 @@ fn run() -> u32 {
     // 解析 SSH_CONNECTION 获取端口。
     // SSH_CONNECTION 格式: "<client_ip> <client_port> <server_ip> <server_port>"
     let ssh_conn = env::var("SSH_CONNECTION").unwrap_or_default();
-    let port = ssh_conn
-        .split_whitespace()
-        .nth(3)
-        .unwrap_or("");
+    let port = ssh_conn.split_whitespace().nth(3).unwrap_or("");
 
     // 解析命令行参数。
     // 注意: Rust 的 env::args() 含程序名 (args[0])，而 C# 的 Main(string[] args) 不含；
@@ -45,7 +42,11 @@ fn run() -> u32 {
     // （C# 原逻辑: args.Length >= 2 && args[0] == "-c"）
     let args: Vec<String> = env::args().collect();
     let has_command = args.len() >= 3 && args[1] == "-c";
-    let command = if has_command { Some(args[2].as_str()) } else { None };
+    let command = if has_command {
+        Some(args[2].as_str())
+    } else {
+        None
+    };
 
     // 仅记录不含远程命令内容的连接信息。
     log::log("========");
@@ -55,7 +56,7 @@ fn run() -> u32 {
     let config = match load_config() {
         Ok(c) => c,
         Err(e) => {
-            log::log(&format!("ERROR: failed to load config: {}", e));
+            log::log(&format!("ERROR: failed to load config: {e}"));
             win32::close_job(h_job.unwrap_or(0));
             return 1;
         }
@@ -89,7 +90,7 @@ fn run() -> u32 {
             let script = match temp::TempScript::create(ext, cmd) {
                 Ok(script) => script,
                 Err(e) => {
-                    log::log(&format!("ERROR: failed to create temp file: {}", e));
+                    log::log(&format!("ERROR: failed to create temp file: {e}"));
                     win32::close_job(h_job.unwrap_or(0));
                     return 1;
                 }
@@ -99,7 +100,11 @@ fn run() -> u32 {
             let tmp_wsl = wsl::to_wsl_path(&tmp_str);
 
             let needs_wsl = route.command_template.contains("{tmpfile_wsl}");
-            let tmpfile_wsl = if needs_wsl { Some(tmp_wsl.as_str()) } else { None };
+            let tmpfile_wsl = if needs_wsl {
+                Some(tmp_wsl.as_str())
+            } else {
+                None
+            };
 
             cmd_line = routing::render_template(
                 &route.command_template,
@@ -121,12 +126,7 @@ fn run() -> u32 {
         };
         log::log(&route_log(&route.name));
 
-        cmd_line = routing::render_template(
-            &route.interactive_template,
-            &route.shell,
-            None,
-            None,
-        );
+        cmd_line = routing::render_template(&route.interactive_template, &route.shell, None, None);
         temp_script = None;
     }
 
@@ -136,7 +136,7 @@ fn run() -> u32 {
     // 关闭 Job Object（触发 KILL_ON_JOB_CLOSE，回收所有子进程）
     win32::close_job(h_job.unwrap_or(0));
 
-    log::log(&format!("exit code: {}", exit_code));
+    log::log(&format!("exit code: {exit_code}"));
     log::log("========");
 
     drop(temp_script);
@@ -154,10 +154,8 @@ fn main() {
 /// 从 CONFIG_PATH 读取并解析 JSON 配置。
 /// 配置缺失或格式错误时返回带上下文的 Err 字符串。
 fn load_config() -> Result<ssh_router_config::Config, String> {
-    let content = fs::read_to_string(CONFIG_PATH)
-        .map_err(|e| format!("read config: {}", e))?;
-    serde_json::from_str(&content)
-        .map_err(|e| format!("parse config: {}", e))
+    let content = fs::read_to_string(CONFIG_PATH).map_err(|e| format!("read config: {e}"))?;
+    serde_json::from_str(&content).map_err(|e| format!("parse config: {e}"))
 }
 
 #[cfg(test)]
