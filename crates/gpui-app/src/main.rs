@@ -5,9 +5,10 @@ mod components;
 mod config_state;
 mod route_editor_state;
 mod system_status_state;
-mod window_controller;
 mod theme;
+mod update_state;
 mod views;
+mod window_controller;
 
 use app::run;
 

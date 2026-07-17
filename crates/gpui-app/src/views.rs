@@ -5,5 +5,7 @@ pub mod route_editor;
 pub mod route_table;
 pub mod sftp_editor;
 pub mod status_panel;
+pub mod update_dialog;
+pub mod update_panel;
 
 pub use main_window::config_main_window;
