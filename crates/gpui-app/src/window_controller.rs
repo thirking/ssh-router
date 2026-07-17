@@ -4,6 +4,9 @@ pub fn install_close_to_tray(window: &Window, cx: &App) {
     window.on_window_should_close(cx, |window, _| {
         #[cfg(windows)]
         {
+            if ssh_router_app_core::platform::windows::tray::take_exit_requested() {
+                return true;
+            }
             let _ = hide_native_window(window);
         }
         false
