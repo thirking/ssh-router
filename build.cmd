@@ -1,38 +1,28 @@
 @echo off
-REM Build script for SSH Router (Tauri v2 + Rust CLI)
-REM
-REM 双程序构建:
-REM - ssh-router-cli.exe: 被 sshd 调起的路由 CLI
-REM - ssh-router.exe:     托盘 GUI (Tauri v2 + React)
-REM
-REM 用法:
-REM   build.cmd                 编译到 .\publish\
-REM   build.cmd "D:\deploy"     编译到指定目录
+setlocal
 
-set OUT_DIR=%~1
-if "%OUT_DIR%"=="" set OUT_DIR=%~dp0publish
+set "ROOT=%~dp0"
+set "OUT_DIR=%~1"
+if "%OUT_DIR%"=="" set "OUT_DIR=%ROOT%publish"
+set "TARGET=x86_64-pc-windows-msvc"
 
-echo Building ssh-router-cli.exe...
-cargo build -p ssh-router-cli --release --target x86_64-pc-windows-msvc
-if %ERRORLEVEL% neq 0 (
-    echo CLI build failed
-    exit /b %ERRORLEVEL%
+for /f "tokens=2 delims== " %%V in ('findstr /b "version =" "%ROOT%crates\gpui-app\Cargo.toml"') do set "VERSION=%%~V"
+set "VERSION_QUAD=%VERSION%.0"
+
+where makensis.exe >nul 2>nul
+if errorlevel 1 (
+    echo makensis.exe not found. Install NSIS first.
+    exit /b 1
 )
 
-echo Building ssh-router.exe (Tauri GUI)...
-call npm install
-call npm run build
-cargo tauri build
-if %ERRORLEVEL% neq 0 (
-    echo Tauri build failed
-    exit /b %ERRORLEVEL%
-)
+cargo build -p ssh-router-cli -p ssh-router-gpui --release --target %TARGET%
+if errorlevel 1 exit /b %ERRORLEVEL%
 
-REM 汇集产物
-if not exist "%OUT_DIR%" mkdir "%OUT_DIR%"
-copy "%~dp0target\x86_64-pc-windows-msvc\release\ssh-router-cli.exe" "%OUT_DIR%\"
-copy "%~dp0src-tauri\target\release\ssh-router.exe" "%OUT_DIR%\"
+if not exist "%OUT_DIR%\resources" mkdir "%OUT_DIR%\resources"
+copy /y "%ROOT%target\%TARGET%\release\ssh-router.exe" "%OUT_DIR%\ssh-router.exe" >nul
+copy /y "%ROOT%target\%TARGET%\release\ssh-router-cli.exe" "%OUT_DIR%\resources\ssh-router-cli.exe" >nul
 
-echo Build succeeded:
-echo   %OUT_DIR%\ssh-router-cli.exe
-echo   %OUT_DIR%\ssh-router.exe
+makensis.exe /DVERSION=%VERSION% /DVERSION_QUAD=%VERSION_QUAD% /DSOURCE_DIR="%OUT_DIR%" /DOUTPUT_FILE="%OUT_DIR%\SSH-Router_%VERSION%_x64-setup.exe" "%ROOT%installer\ssh-router.nsi"
+if errorlevel 1 exit /b %ERRORLEVEL%
+
+echo Build succeeded: "%OUT_DIR%"

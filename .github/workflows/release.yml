@@ -3,7 +3,7 @@ name: Release
 on:
   push:
     tags:
-      - 'v*'
+      - "v*"
 
 jobs:
   release:
@@ -15,96 +15,117 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: x86_64-pc-windows-msvc
 
-      - name: Cache cargo
+      - name: Cache Cargo
         uses: actions/cache@v4
         with:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
             target
-            src-tauri/target
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
-      - name: Install npm dependencies
-        run: npm ci || npm install
+      - name: Install NSIS
+        shell: pwsh
+        run: |
+          choco install nsis -y --no-progress
+          "C:\Program Files (x86)\NSIS" | Out-File -FilePath $env:GITHUB_PATH -Append
 
       - name: Verify release versions
         shell: pwsh
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
         run: |
-          $expected = "${{ github.ref_name }}".TrimStart('v')
-          $versions = [ordered]@{
-            "package.json" = (Get-Content package.json | ConvertFrom-Json).version
-            "src-tauri/tauri.conf.json" = (Get-Content src-tauri/tauri.conf.json | ConvertFrom-Json).version
-          }
+          $expected = $env:RELEASE_TAG.TrimStart('v')
           foreach ($path in @(
-            "src-tauri/Cargo.toml",
+            "crates/app-core/Cargo.toml",
+            "crates/gpui-app/Cargo.toml",
             "crates/cli/Cargo.toml",
             "crates/config/Cargo.toml"
           )) {
             $match = Select-String -Path $path -Pattern '^version\s*=\s*"([^"]+)"' | Select-Object -First 1
-            $versions[$path] = $match.Matches[0].Groups[1].Value
-          }
-          $mismatches = $versions.GetEnumerator() | Where-Object { $_.Value -ne $expected }
-          if ($mismatches) {
-            $details = ($mismatches | ForEach-Object { "$($_.Key)=$($_.Value)" }) -join ", "
-            throw "Version mismatch: tag=$expected; $details"
+            if ($match.Matches[0].Groups[1].Value -ne $expected) {
+              throw "Version mismatch: tag=$expected; $path=$($match.Matches[0].Groups[1].Value)"
+            }
           }
 
-      - name: Build CLI and copy to resources
+      - name: Test Rust workspace
+        shell: pwsh
         run: |
-          cargo build -p ssh-router-cli --release --target x86_64-pc-windows-msvc
-          New-Item -ItemType Directory -Force -Path src-tauri/resources
-          Copy-Item target/x86_64-pc-windows-msvc/release/ssh-router-cli.exe src-tauri/resources/
+          cargo test --workspace --target x86_64-pc-windows-msvc
+          cargo clippy --workspace --target x86_64-pc-windows-msvc -- -D warnings
 
-      - name: Build Tauri GUI (ssh-router.exe + installers)
-        uses: tauri-apps/tauri-action@v0
+      - name: Build GPUI application and NSIS installer
+        shell: cmd
+        run: build.cmd publish
+
+      - name: Build updater packager
+        shell: pwsh
+        run: cargo build --release -p ssh-router-update-packager
+
+      - name: Create signed updater metadata
+        shell: pwsh
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-        with:
-          tagName: ${{ github.ref_name }}
-          releaseName: 'SSH Router ${{ github.ref_name }}'
-          releaseBody: |
-            ## SSH Router ${{ github.ref_name }}
+          RELEASE_TAG: ${{ github.ref_name }}
+          RELEASE_REPOSITORY: ${{ github.repository }}
+        run: |
+          $version = $env:RELEASE_TAG.TrimStart('v')
+          $installerName = "SSH-Router_${version}_x64-setup.exe"
+          @"
+          ## SSH Router $env:RELEASE_TAG
 
-            Windows OpenSSH 多端口智能路由器 — Tauri v2 托盘 GUI + Rust CLI。
+          Windows OpenSSH 多端口智能路由器，使用纯 Rust + GPUI 原生界面。
+          "@ | Set-Content release-notes.md -Encoding UTF8
+          ./scripts/package-update.ps1 `
+            -Version $version `
+            -Installer "publish/$installerName" `
+            -DownloadUrl "https://github.com/$env:RELEASE_REPOSITORY/releases/download/$env:RELEASE_TAG/$installerName" `
+            -Notes release-notes.md `
+            -OutputDirectory publish
 
-            ### 安装
-
-            1. 下载下方的 `setup.exe` 安装 SSH Router GUI
-            2. 安装后运行 SSH Router，在主界面点击"安装/更新 CLI"按钮（自动部署 CLI 到 `C:\ProgramData\ssh\`）
-            3. 点击"设置 DefaultShell"按钮（自动配置 sshd 使用 CLI）
-            4. 点击"重启 sshd"按钮使配置生效
-            5. 在路由配置区添加/编辑端口路由，保存即可
-
-            > v0.0.7 及更早版本需要手动安装本版本一次；从本版本开始，应用会自动检查并提示安装后续稳定版。
-          releaseDraft: false
-          prerelease: false
-          updaterJsonPreferNsis: true
-
-      - name: Verify updater release assets
+      - name: Publish GitHub release
         shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ github.ref_name }}
         run: |
-          $assets = @(gh release view "${{ github.ref_name }}" --json assets --jq '.assets[].name')
-          if ("latest.json" -notin $assets) {
-            throw "Missing updater metadata: latest.json"
+          $version = $env:RELEASE_TAG.TrimStart('v')
+          $installer = "publish/SSH-Router_${version}_x64-setup.exe"
+          gh release create $env:RELEASE_TAG `
+            $installer `
+            "$installer.sig" `
+            "publish/latest.json" `
+            --title "SSH Router $env:RELEASE_TAG" `
+            --notes-file release-notes.md `
+            --verify-tag
+
+      - name: Verify published updater assets
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          $version = $env:RELEASE_TAG.TrimStart('v')
+          $installerName = "SSH-Router_${version}_x64-setup.exe"
+          New-Item -ItemType Directory -Force verify | Out-Null
+          gh release download $env:RELEASE_TAG --dir verify
+          $localHash = (Get-FileHash "publish/$installerName" -Algorithm SHA256).Hash
+          $remoteHash = (Get-FileHash "verify/$installerName" -Algorithm SHA256).Hash
+          if ($localHash -ne $remoteHash) { throw "Published installer hash mismatch" }
+          $manifest = Get-Content "verify/latest.json" -Raw | ConvertFrom-Json
+          $platform = $manifest.platforms.'windows-x86_64'
+          if ($manifest.version -ne $version) { throw "latest.json version mismatch" }
+          if (-not $platform.url.EndsWith($installerName)) { throw "latest.json URL mismatch" }
+          if ($platform.signature -ne (Get-Content "verify/$installerName.sig" -Raw)) {
+            throw "latest.json signature mismatch"
           }
-          if (-not ($assets | Where-Object { $_ -like "*-setup.exe" })) {
-            throw "Missing NSIS setup.exe"
-          }
-          if (-not ($assets | Where-Object { $_ -like "*.sig" })) {
-            throw "Missing updater signature"
-          }
+          target/release/ssh-router-update-packager.exe verify `
+            --installer "verify/$installerName" `
+            --signature "verify/$installerName.sig"
+          if ($LASTEXITCODE -ne 0) { throw "Published signature verification failed" }

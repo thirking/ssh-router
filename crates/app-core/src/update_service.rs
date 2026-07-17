@@ -277,6 +277,7 @@ impl InstallerLauncher for PlatformInstallerLauncher {
         {
             Command::new(path)
                 .args(NSIS_UPDATE_ARGS)
+                .arg(format!("/PARENT={}", std::process::id()))
                 .spawn()
                 .map(|_| ())
                 .map_err(|error| {

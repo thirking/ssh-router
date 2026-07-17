@@ -127,14 +127,13 @@ SFTP 子系统（`Subsystem sftp sftp-server.exe`）也通过 DefaultShell 执�
 
 ## 编译
 
-需要 Rust + Node.js + Tauri CLI。**Tauri 不建议交叉编译，以下命令应在 Windows 上运行**；macOS 上只能做 CLI 的类型检查：`cargo check --target x86_64-pc-windows-msvc`。
+需要 Rust、MSVC 和 NSIS。GPUI Windows 程序必须在 Windows 上原生构建。
 
 ### 前置条件
 
 - Rust toolchain（`rustup target add x86_64-pc-windows-msvc`）
-- Node.js 18+
-- Tauri CLI（`cargo install tauri-cli --version "^2.0"`）
 - Windows 10/11 SDK（MSVC 链接器，随 Visual Studio Build Tools 提供）
+- NSIS 3.x（提供 `makensis.exe`）
 
 ### 构建两个 exe
 
@@ -153,13 +152,14 @@ build.cmd "D:\deploy"
 
 脚本会依次执行：
 
-1. `cargo build -p ssh-router-cli --release --target x86_64-pc-windows-msvc` → 产出 `ssh-router-cli.exe`
-2. `npm install && npm run build && cargo tauri build` → 产出 `ssh-router.exe`
+1. 使用 Cargo 构建 `ssh-router-cli.exe` 和 GPUI `ssh-router.exe`
+2. 将 CLI 放入 `resources/`，并调用 NSIS 生成兼容升级安装包
 
 产物汇集到 `publish/`（或指定目录）下：
 
-- `ssh-router-cli.exe`：路由程序，CI 会自动打包进安装包（作为 Tauri resource）
-- `ssh-router.exe`：托盘 GUI，安装包内含 CLI
+- `ssh-router.exe`：GPUI 原生托盘 GUI
+- `resources/ssh-router-cli.exe`：随安装包部署的路由 CLI
+- `SSH-Router_<version>_x64-setup.exe`：NSIS 安装包
 
 ## 安装
 
@@ -167,7 +167,7 @@ build.cmd "D:\deploy"
 
 从 [GitHub Releases](https://github.com/thirking/ssh-router/releases) 下载 `setup.exe` 安装包，安装 SSH Router GUI。
 
-安装包自带 `ssh-router-cli.exe`（打包为 Tauri resource），无需单独下载。
+安装包自带 `resources/ssh-router-cli.exe`，无需单独下载。
 
 > 从 `v0.0.8` 起统一使用 NSIS `setup.exe`。`v0.0.7` 及更早版本需要手动安装 `v0.0.8` 一次；如果旧版通过 MSI 安装，建议先在 Windows“已安装的应用”中卸载旧 GUI。卸载 GUI 不会删除 `C:\ProgramData\ssh\` 中的路由配置和已部署 CLI。
 
@@ -248,7 +248,7 @@ Restart-Service sshd -Force
 - GUI 更新后如果已部署 CLI 与安装包内版本不一致，会提示通过 UAC 同步；取消后可使用“安装/更新 CLI”重试
 - 自动检查网络失败不会影响托盘、路由配置或 SSH 服务
 
-更新包由 Tauri 签名机制验证，更新源固定为本项目的 GitHub Releases 稳定版；草稿和预发布版本不会进入自动更新通道。
+更新包由内置 minisign 公钥验证，更新源固定为本项目的 GitHub Releases 稳定版；草稿和预发布版本不会进入自动更新通道。
 
 ### 发布签名维护
 
@@ -270,7 +270,7 @@ Restart-Service sshd -Force
 - WSL 发行版名称和 home 路径写在命令模板字符串中（非独立字段），改发行版需编辑模板
 - 不支持 `ForceCommand`（如果 sshd_config 中设置了 ForceCommand，会与本程序冲突）
 - SFTP 通过 `cmd.exe /c` 执行，读取的是 Windows 文件系统（`C:\` 路径），不是 WSL 文件系统（`/home/` 路径）
-- Tauri GUI 需在 Windows 上原生构建，不支持交叉编译；CLI 可在 macOS 上 `cargo check` 但无法产出 Windows exe
+- GPUI GUI 需在 Windows 上原生构建；CLI 可在 macOS 上检查，但 Windows 发布产物由 MSVC 生成
 
 ## 排错
 

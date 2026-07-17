@@ -10,6 +10,7 @@ members = [
     "crates/cli",
     "crates/app-core",
     "crates/gpui-app",
+    "crates/update-packager",
     "src-tauri",
 ]
 resolver = "2"
