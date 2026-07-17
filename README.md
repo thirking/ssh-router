@@ -271,6 +271,8 @@ Restart-Service sshd -Force
 
 启动时间、空闲内存和 CPU 的可重复采样方法见 [`docs/performance/README.md`](docs/performance/README.md)。MVP 仅记录数据，不设置发布失败阈值。
 
+MVP 发布验证步骤与证据见 [`docs/testing/gpui-mvp-checklist.md`](docs/testing/gpui-mvp-checklist.md)。
+
 ## 已知限制
 
 - WSL 发行版名称和 home 路径写在命令模板字符串中（非独立字段），改发行版需编辑模板
