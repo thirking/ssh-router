@@ -2,8 +2,11 @@
 setlocal
 
 set "ROOT=%~dp0"
-set "OUT_DIR=%~1"
-if "%OUT_DIR%"=="" set "OUT_DIR=%ROOT%publish"
+if "%~1"=="" (
+    set "OUT_DIR=%ROOT%publish"
+) else (
+    set "OUT_DIR=%~f1"
+)
 set "TARGET=x86_64-pc-windows-msvc"
 
 for /f "tokens=2 delims== " %%V in ('findstr /b "version =" "%ROOT%crates\gpui-app\Cargo.toml"') do set "VERSION=%%~V"

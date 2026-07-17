@@ -3,7 +3,7 @@ use gpui::{
     div, prelude::*, px, size, App, Application, Bounds, Context, FontWeight, KeyBinding, Window,
     WindowBounds, WindowOptions,
 };
-use gpui_component::Root;
+use gpui_component::{scroll::ScrollableElement, Root};
 use std::rc::Rc;
 
 use crate::actions::{
@@ -160,26 +160,12 @@ impl Render for AppState {
                 let _ = entity.update(cx, |state, cx| state.dismiss_update(cx));
             })
         };
-        let content = div()
-            .id("ssh-router-app")
-            .key_context(APP_KEY_CONTEXT)
-            .track_focus(&self.focus_handle)
-            .on_action(cx.listener(Self::on_focus_next))
-            .on_action(cx.listener(Self::on_focus_previous))
-            .on_action(cx.listener(Self::on_open_modal))
-            .on_action(cx.listener(Self::on_close_modal))
-            .on_action(cx.listener(Self::on_save_config))
-            .on_action(cx.listener(Self::on_create_default_config))
-            .relative()
-            .size_full()
-            .min_w(px(640.0))
-            .min_h(px(520.0))
+        let page = div()
+            .w_full()
             .flex()
             .flex_col()
             .gap_5()
             .p_6()
-            .bg(theme.background)
-            .text_color(theme.text)
             .child(
                 div()
                     .flex()
@@ -338,6 +324,30 @@ impl Render for AppState {
                     .child(status_badge("待优化", StatusKind::Warning, theme))
                     .child(status_badge("异常示例", StatusKind::Error, theme))
                     .child(status_badge("未检查", StatusKind::Neutral, theme)),
+            );
+
+        let content = div()
+            .id("ssh-router-app")
+            .key_context(APP_KEY_CONTEXT)
+            .track_focus(&self.focus_handle)
+            .on_action(cx.listener(Self::on_focus_next))
+            .on_action(cx.listener(Self::on_focus_previous))
+            .on_action(cx.listener(Self::on_open_modal))
+            .on_action(cx.listener(Self::on_close_modal))
+            .on_action(cx.listener(Self::on_save_config))
+            .on_action(cx.listener(Self::on_create_default_config))
+            .relative()
+            .size_full()
+            .min_w(px(640.0))
+            .min_h(px(520.0))
+            .bg(theme.background)
+            .text_color(theme.text)
+            .child(
+                div()
+                    .id("main-scroll")
+                    .flex_1()
+                    .child(page)
+                    .overflow_y_scrollbar(),
             )
             .child(toast_host(&self.notifications, theme))
             .child(cli_sync_dialog(
@@ -416,10 +426,13 @@ pub fn run() {
             KeyBinding::new("cmd-shift-n", CreateDefaultConfig, Some(APP_KEY_CONTEXT)),
         ]);
 
+        let show_window = startup_marker.is_some();
         let bounds = Bounds::centered(None, size(px(800.0), px(680.0)), cx);
         let result = cx.open_window(
             WindowOptions {
                 window_bounds: Some(WindowBounds::Windowed(bounds)),
+                focus: show_window,
+                show: show_window,
                 titlebar: Some(gpui::TitlebarOptions {
                     title: Some("SSH Router".into()),
                     ..Default::default()
@@ -431,7 +444,11 @@ pub fn run() {
                     window.on_next_frame(move |window, _| {
                         window.on_next_frame(move |_, cx| {
                             cx.background_spawn(async move {
-                                let _ = std::fs::write(marker, std::process::id().to_string());
+                                if let Err(error) =
+                                    std::fs::write(marker, std::process::id().to_string())
+                                {
+                                    eprintln!("无法写入启动性能标记：{error}");
+                                }
                             })
                             .detach();
                         });
