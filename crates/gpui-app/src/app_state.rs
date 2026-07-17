@@ -46,6 +46,8 @@ pub struct AppState {
     _route_subscriptions: Vec<Subscription>,
     syncing_inputs: bool,
     next_notification_id: u64,
+    #[cfg(windows)]
+    _tray_icon: Option<ssh_router_app_core::platform::windows::tray::TrayIcon>,
 }
 
 impl AppState {
@@ -56,6 +58,13 @@ impl AppState {
                 .default_value("PowerShell")
         });
         let route_inputs = RouteEditorInputs::new(window, cx);
+        #[cfg(windows)]
+        let tray_icon = crate::window_controller::native_hwnd(window)
+            .ok()
+            .and_then(|hwnd| {
+                ssh_router_app_core::platform::windows::tray::TrayIcon::install(hwnd, "SSH Router")
+                    .ok()
+            });
         let subscriptions = vec![
             cx.subscribe(&route_inputs.port, |this, input, event: &InputEvent, cx| {
                 if !this.syncing_inputs && matches!(event, InputEvent::Change) {
@@ -146,6 +155,8 @@ impl AppState {
             _route_subscriptions: subscriptions,
             syncing_inputs: false,
             next_notification_id: 2,
+            #[cfg(windows)]
+            _tray_icon: tray_icon,
         }
     }
 

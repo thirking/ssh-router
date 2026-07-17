@@ -339,7 +339,28 @@ impl Render for AppState {
 }
 
 pub fn run() {
-    Application::new().run(|cx: &mut App| {
+    #[cfg(windows)]
+    let single_instance = match ssh_router_app_core::platform::windows::single_instance::SingleInstanceGuard::acquire(
+        "Global\\SSH Router",
+    ) {
+        Ok(ssh_router_app_core::platform::windows::single_instance::SingleInstance::Primary(
+            guard,
+        )) => guard,
+        Ok(ssh_router_app_core::platform::windows::single_instance::SingleInstance::AlreadyRunning) => {
+            let _ = ssh_router_app_core::platform::windows::single_instance::activate_existing_window(
+                "SSH Router",
+            );
+            return;
+        }
+        Err(error) => {
+            eprintln!("无法初始化单实例：{error:?}");
+            return;
+        }
+    };
+
+    Application::new().run(move |cx: &mut App| {
+        #[cfg(windows)]
+        let _single_instance_guard = &single_instance;
         gpui_component::init(cx);
         cx.bind_keys([
             KeyBinding::new("tab", FocusNext, Some(APP_KEY_CONTEXT)),
@@ -361,6 +382,7 @@ pub fn run() {
                 ..Default::default()
             },
             |window, cx| {
+                crate::window_controller::install_close_to_tray(window, cx);
                 let app = cx.new(|cx| AppState::new(window, cx));
                 #[cfg(windows)]
                 app.update(cx, |state, cx| {

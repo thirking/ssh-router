@@ -5,6 +5,9 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant, SystemTime};
 
+pub mod single_instance;
+pub mod tray;
+
 use windows::core::{HRESULT, PCWSTR};
 use windows::Win32::Foundation::{
     ERROR_CANCELLED, ERROR_FILE_NOT_FOUND, ERROR_SERVICE_DOES_NOT_EXIST,
