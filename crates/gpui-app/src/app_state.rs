@@ -5,7 +5,10 @@ use crate::{
     config_state::ConfigState,
     route_editor_state::{RouteEditorInputs, RouteEditorState},
     system_status_state::{SystemOperation, SystemStatusState},
+    update_state::{UpdateCheckMode, UpdateInstallDecision, UpdateState},
 };
+
+const UPDATE_CHECK_INTERVAL: std::time::Duration = std::time::Duration::from_secs(24 * 60 * 60);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum NotificationKind {
@@ -33,6 +36,7 @@ pub struct AppState {
     pub route_editor: RouteEditorState,
     pub route_inputs: RouteEditorInputs,
     pub system: SystemStatusState,
+    pub update: UpdateState,
     pub input: Entity<InputState>,
     pub modal: Option<ModalState>,
     pub notifications: Vec<Notification>,
@@ -140,11 +144,16 @@ impl AppState {
                 },
             ),
         ];
+        let update = UpdateState {
+            current_version: env!("CARGO_PKG_VERSION").to_string(),
+            ..UpdateState::default()
+        };
         Self {
             config: ConfigState::default(),
             route_editor: RouteEditorState::default(),
             route_inputs,
             system: SystemStatusState::default(),
+            update,
             input,
             modal: None,
             notifications: vec![Notification {
@@ -307,6 +316,174 @@ impl AppState {
 
     pub fn dismiss_cli_sync_prompt(&mut self, cx: &mut Context<Self>) {
         self.system.close_cli_prompt();
+        cx.notify();
+    }
+
+    pub fn start_update_schedule(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.request_update_check(UpdateCheckMode::Automatic, window, cx);
+        cx.spawn_in(window, async move |entity, cx| loop {
+            cx.background_executor().timer(UPDATE_CHECK_INTERVAL).await;
+            if entity
+                .update_in(cx, |state, window, cx| {
+                    state.request_update_check(UpdateCheckMode::Automatic, window, cx);
+                })
+                .is_err()
+            {
+                break;
+            }
+        })
+        .detach();
+    }
+
+    pub fn request_update_check(
+        &mut self,
+        mode: UpdateCheckMode,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.update.candidate.is_some() {
+            if mode == UpdateCheckMode::Manual {
+                self.update.show_available();
+                cx.notify();
+            }
+            return;
+        }
+        if !self.update.begin_check() {
+            return;
+        }
+        cx.notify();
+        let task = cx.background_spawn(async move {
+            ssh_router_app_core::UpdateService::new(
+                env!("CARGO_PKG_VERSION"),
+                ssh_router_app_core::WINDOWS_X86_64_PLATFORM,
+            )
+            .check_url(ssh_router_app_core::UPDATE_MANIFEST_URL)
+            .map_err(|error| error.to_string())
+        });
+        cx.spawn_in(window, async move |entity, cx| {
+            let result = task.await;
+            let outcome = match &result {
+                Ok(Some(_)) => Ok(true),
+                Ok(None) => Ok(false),
+                Err(message) => Err(message.clone()),
+            };
+            let _ = entity.update_in(cx, |state, _, cx| {
+                state.update.apply_check(mode, result);
+                match (mode, outcome) {
+                    (_, Ok(true)) => {
+                        state.notify(NotificationKind::Info, "发现可用更新", cx);
+                    }
+                    (UpdateCheckMode::Manual, Ok(false)) => {
+                        state.notify(NotificationKind::Info, "当前已是最新版本", cx);
+                    }
+                    (UpdateCheckMode::Manual, Err(message)) => {
+                        state.notify_error(format!("检查更新失败：{message}"), cx);
+                    }
+                    (UpdateCheckMode::Automatic, Ok(false)) => {}
+                    (UpdateCheckMode::Automatic, Err(_)) => {}
+                }
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+
+    pub fn request_update_install(
+        &mut self,
+        confirmed_dirty_config: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let decision = if confirmed_dirty_config {
+            if self.update.confirm_download() {
+                UpdateInstallDecision::Started
+            } else {
+                UpdateInstallDecision::Busy
+            }
+        } else {
+            self.update.request_download(self.config.is_dirty)
+        };
+        match decision {
+            UpdateInstallDecision::Started => self.start_update_download(window, cx),
+            UpdateInstallDecision::NeedsConfirmation => {
+                self.notify(
+                    NotificationKind::Warning,
+                    "配置尚未保存，请确认后再安装更新",
+                    cx,
+                );
+            }
+            UpdateInstallDecision::Busy => {}
+            UpdateInstallDecision::Unavailable => {
+                self.notify(NotificationKind::Info, "当前没有可安装的更新", cx);
+            }
+        }
+        cx.notify();
+    }
+
+    fn start_update_download(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(candidate) = self.update.candidate.clone() else {
+            self.update.fail("更新候选已失效");
+            cx.notify();
+            return;
+        };
+        let service = ssh_router_app_core::UpdateService::new(
+            env!("CARGO_PKG_VERSION"),
+            ssh_router_app_core::WINDOWS_X86_64_PLATFORM,
+        );
+        let download_service = service.clone();
+        let (sender, receiver) = async_channel::bounded(8);
+        let task = cx.background_spawn(async move {
+            download_service.download_and_verify(&candidate, |progress| {
+                let _ = sender.send_blocking(progress);
+            })
+        });
+        cx.spawn_in(window, async move |entity, cx| {
+            while let Ok(progress) = receiver.recv().await {
+                let _ = entity.update_in(cx, |state, _, cx| {
+                    state
+                        .update
+                        .progress(progress.downloaded_bytes, progress.total_bytes);
+                    cx.notify();
+                });
+            }
+            let mut installer = match task.await {
+                Ok(installer) => installer,
+                Err(error) => {
+                    let _ = entity.update_in(cx, |state, _, cx| {
+                        state.update.fail(error.to_string());
+                        state.notify_error(format!("更新下载失败：{error}"), cx);
+                    });
+                    return;
+                }
+            };
+            if entity
+                .update_in(cx, |state, _, cx| {
+                    state.update.finished();
+                    cx.notify();
+                })
+                .is_err()
+            {
+                return;
+            }
+            let launch_task =
+                cx.background_spawn(async move { service.launch_installer(&mut installer) });
+            match launch_task.await {
+                Ok(()) => {
+                    let _ = cx.update(|_, cx| cx.quit());
+                }
+                Err(error) => {
+                    let _ = entity.update_in(cx, |state, _, cx| {
+                        state.update.fail(error.to_string());
+                        state.notify_error(format!("启动安装程序失败：{error}"), cx);
+                    });
+                }
+            }
+        })
+        .detach();
+    }
+
+    pub fn dismiss_update(&mut self, cx: &mut Context<Self>) {
+        self.update.dismiss();
         cx.notify();
     }
 

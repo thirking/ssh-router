@@ -3,8 +3,8 @@ pub mod config_service;
 pub mod elevation_service;
 pub mod error;
 pub mod platform;
-pub mod status_service;
 pub mod signature;
+pub mod status_service;
 pub mod update_manifest;
 pub mod update_service;
 
@@ -21,4 +21,9 @@ pub use platform::{
 };
 pub use status_service::{DesktopSystemService, OperationMessage, SystemService, SystemStatus};
 pub use update_manifest::{PlatformUpdate, UpdateCandidate, UpdateManifest};
-pub use update_service::UpdateService;
+pub use update_service::{
+    DownloadProgress, DownloadedInstaller, InstallerLauncher, InstallerVerifier,
+    LocalUpdateFileSystem, MinisignInstallerVerifier, PlatformInstallerLauncher,
+    ReqwestUpdateHttpClient, UpdateFileSystem, UpdateHttpClient, UpdateService, UpdateTempFile,
+    UPDATE_MANIFEST_URL, WINDOWS_X86_64_PLATFORM,
+};

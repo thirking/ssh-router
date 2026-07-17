@@ -8,6 +8,7 @@ name = "ssh-router"
 path = "src/main.rs"
 
 [dependencies]
+async-channel = "2.5"
 gpui = { version = "=0.2.2", default-features = false, features = ["windows-manifest"] }
 gpui-component = { version = "=0.5.1", default-features = false }
 ssh-router-config = { path = "../config" }

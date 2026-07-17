@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 use std::rc::Rc;
 
 use gpui::{div, prelude::*, AnyElement, App, ClickEvent, IntoElement, Window};
@@ -16,7 +14,7 @@ pub fn update_panel(state: &UpdateState, theme: AppTheme, on_check: UpdateAction
     let label = match state.phase {
         UpdatePhase::Idle => "检查更新",
         UpdatePhase::Checking => "检查中…",
-        UpdatePhase::Available => "发现新版本",
+        UpdatePhase::Available => "查看新版本",
         UpdatePhase::Downloading => "下载中…",
         UpdatePhase::Installing => "安装中…",
         UpdatePhase::Error => "重试更新检查",
@@ -30,11 +28,20 @@ pub fn update_panel(state: &UpdateState, theme: AppTheme, on_check: UpdateAction
         .border_1()
         .border_color(theme.border)
         .bg(theme.surface)
-        .child(div().text_sm().child(if state.current_version.is_empty() {
-            "更新：未检查"
-        } else {
-            "更新检查"
-        }))
+        .child(
+            div()
+                .flex()
+                .flex_col()
+                .child(div().text_sm().child("应用更新"))
+                .child(div().text_xs().text_color(theme.text_muted).child(format!(
+                    "当前版本 {}",
+                    if state.current_version.is_empty() {
+                        "未知"
+                    } else {
+                        &state.current_version
+                    }
+                ))),
+        )
         .child(
             Button::new("check-updates")
                 .small()

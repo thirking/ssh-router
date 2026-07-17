@@ -17,9 +17,11 @@ use crate::components::{
 };
 use crate::system_status_state::SystemOperation;
 use crate::theme::AppTheme;
+use crate::update_state::UpdateCheckMode;
 use crate::views::config_main_window;
 use crate::views::{
     cli_sync_dialog::cli_sync_dialog, quick_actions::quick_actions, status_panel::status_panel,
+    update_dialog::update_dialog, update_panel::update_panel,
 };
 
 impl AppState {
@@ -128,6 +130,36 @@ impl Render for AppState {
             })
         };
         let on_sync_from_prompt = on_install_cli.clone();
+        let on_check_update = {
+            let entity = cx.entity().downgrade();
+            Rc::new(move |_: &ClickEvent, window: &mut Window, cx: &mut App| {
+                let _ = entity.update(cx, |state, cx| {
+                    state.request_update_check(UpdateCheckMode::Manual, window, cx)
+                });
+            })
+        };
+        let on_install_update = {
+            let entity = cx.entity().downgrade();
+            Rc::new(move |_: &ClickEvent, window: &mut Window, cx: &mut App| {
+                let _ = entity.update(cx, |state, cx| {
+                    state.request_update_install(false, window, cx)
+                });
+            })
+        };
+        let on_confirm_update = {
+            let entity = cx.entity().downgrade();
+            Rc::new(move |_: &ClickEvent, window: &mut Window, cx: &mut App| {
+                let _ = entity.update(cx, |state, cx| {
+                    state.request_update_install(true, window, cx)
+                });
+            })
+        };
+        let on_dismiss_update = {
+            let entity = cx.entity().downgrade();
+            Rc::new(move |_: &ClickEvent, _: &mut Window, cx: &mut App| {
+                let _ = entity.update(cx, |state, cx| state.dismiss_update(cx));
+            })
+        };
         let content = div()
             .id("ssh-router-app")
             .key_context(APP_KEY_CONTEXT)
@@ -175,6 +207,7 @@ impl Render for AppState {
             )
             .child(text_field("路由名称", &self.input, theme))
             .child(status_panel(&self.system, theme, on_status_refresh))
+            .child(update_panel(&self.update, theme, on_check_update))
             .child(quick_actions(
                 self.system.running,
                 theme,
@@ -312,6 +345,13 @@ impl Render for AppState {
                 theme,
                 on_sync_from_prompt,
                 on_dismiss_cli_prompt,
+            ))
+            .child(update_dialog(
+                &self.update,
+                theme,
+                on_install_update,
+                on_confirm_update,
+                on_dismiss_update,
             ));
 
         content.when_some(self.modal.clone(), |content, modal| {
@@ -394,6 +434,7 @@ pub fn run() {
                 app.update(cx, |state, cx| {
                     state.start_config_load(window, cx);
                     state.start_status_refresh(window, cx);
+                    state.start_update_schedule(window, cx);
                 });
                 cx.new(|cx| Root::new(app, window, cx))
             },

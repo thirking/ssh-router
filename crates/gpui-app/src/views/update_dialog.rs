@@ -1,7 +1,8 @@
-#![allow(dead_code)]
-
 use gpui::{div, prelude::*, AnyElement, IntoElement};
-use gpui_component::button::{Button, ButtonVariants};
+use gpui_component::{
+    button::{Button, ButtonVariants},
+    Disableable,
+};
 
 use super::update_panel::UpdateAction;
 use crate::{
@@ -13,12 +14,25 @@ pub fn update_dialog(
     state: &UpdateState,
     theme: AppTheme,
     on_install: UpdateAction,
+    on_confirm_install: UpdateAction,
     on_dismiss: UpdateAction,
 ) -> AnyElement {
     if !state.dialog_open {
         return div().into_any_element();
     }
     let candidate = state.candidate.as_ref();
+    let primary_action = if state.confirm_dirty_install {
+        on_confirm_install
+    } else {
+        on_install
+    };
+    let progress = match (state.downloaded_bytes, state.total_bytes) {
+        (downloaded, Some(total)) if total > 0 => {
+            format!("已下载 {:.0}%", downloaded as f64 / total as f64 * 100.0)
+        }
+        (downloaded, _) if downloaded > 0 => format!("已下载 {downloaded} 字节"),
+        _ => String::new(),
+    };
     div()
         .absolute()
         .top_4()
@@ -46,7 +60,7 @@ pub fn update_dialog(
         )
         .child(
             div().text_sm().child(match state.phase {
-                UpdatePhase::Downloading => format!("已下载 {} 字节", state.downloaded_bytes),
+                UpdatePhase::Downloading => progress,
                 UpdatePhase::Installing => "正在启动安装程序…".to_string(),
                 UpdatePhase::Error => state
                     .error
@@ -55,6 +69,17 @@ pub fn update_dialog(
                 _ => String::new(),
             }),
         )
+        .when(state.confirm_dirty_install, |dialog| {
+            dialog.child(
+                div()
+                    .mt_3()
+                    .p_3()
+                    .rounded_md()
+                    .bg(theme.warning.opacity(0.12))
+                    .text_sm()
+                    .child("配置尚未保存。继续安装将退出应用，请确认已处理草稿。"),
+            )
+        })
         .child(
             div()
                 .flex()
@@ -63,12 +88,20 @@ pub fn update_dialog(
                 .child(
                     Button::new("install-update")
                         .primary()
-                        .label(if state.phase == UpdatePhase::Downloading {
+                        .label(if state.confirm_dirty_install {
+                            "仍然安装"
+                        } else if state.phase == UpdatePhase::Downloading {
                             "下载中…"
+                        } else if state.phase == UpdatePhase::Installing {
+                            "安装中…"
                         } else {
                             "安装更新"
                         })
-                        .on_click(move |event, window, cx| (on_install)(event, window, cx)),
+                        .disabled(matches!(
+                            state.phase,
+                            UpdatePhase::Downloading | UpdatePhase::Installing
+                        ))
+                        .on_click(move |event, window, cx| (primary_action)(event, window, cx)),
                 )
                 .child(
                     Button::new("dismiss-update")
