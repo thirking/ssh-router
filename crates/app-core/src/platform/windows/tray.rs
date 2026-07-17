@@ -1,4 +1,4 @@
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use windows::Win32::Foundation::HWND;
 use windows::Win32::Foundation::{LPARAM, LRESULT, POINT, WPARAM};
 use windows::Win32::UI::Shell::{
@@ -7,8 +7,9 @@ use windows::Win32::UI::Shell::{
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     AppendMenuW, CreatePopupMenu, DestroyMenu, GetCursorPos, LoadIconW, PostMessageW,
-    SetForegroundWindow, ShowWindow, TrackPopupMenu, HICON, IDI_APPLICATION, MF_STRING, SW_RESTORE,
-    SW_SHOW, TPM_RETURNCMD, WM_CLOSE, WM_LBUTTONDBLCLK, WM_RBUTTONUP, WM_USER,
+    RegisterWindowMessageW, SetForegroundWindow, ShowWindow, TrackPopupMenu, HICON,
+    IDI_APPLICATION, MF_STRING, SW_RESTORE, SW_SHOW, TPM_RETURNCMD, WM_CLOSE, WM_LBUTTONDBLCLK,
+    WM_RBUTTONUP, WM_USER,
 };
 
 const TRAY_MESSAGE: u32 = WM_USER + 42;
@@ -16,6 +17,7 @@ const TRAY_ID: usize = 1;
 const OPEN_COMMAND: usize = 1001;
 const EXIT_COMMAND: usize = 1002;
 static EXIT_REQUESTED: AtomicBool = AtomicBool::new(false);
+static TASKBAR_CREATED_MESSAGE: AtomicU32 = AtomicU32::new(0);
 
 pub struct TrayIcon {
     hwnd: HWND,
@@ -23,6 +25,10 @@ pub struct TrayIcon {
 
 impl TrayIcon {
     pub fn install(hwnd: HWND, tooltip: &str) -> windows::core::Result<Self> {
+        TASKBAR_CREATED_MESSAGE.store(
+            unsafe { RegisterWindowMessageW(windows::core::w!("TaskbarCreated")) },
+            Ordering::Release,
+        );
         let data = notify_data(hwnd, tooltip);
         let added = unsafe { Shell_NotifyIconW(NIM_ADD, &data).as_bool() };
         if !added {
@@ -60,6 +66,10 @@ unsafe extern "system" fn tray_window_proc(
     _subclass_id: usize,
     _reference_data: usize,
 ) -> LRESULT {
+    if message == TASKBAR_CREATED_MESSAGE.load(Ordering::Acquire) {
+        let data = notify_data(hwnd, "SSH Router");
+        let _ = Shell_NotifyIconW(NIM_ADD, &data);
+    }
     if message == TRAY_MESSAGE {
         match lparam.0 as u32 {
             WM_LBUTTONDBLCLK => {
