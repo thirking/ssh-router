@@ -1,10 +1,15 @@
+use gpui::ClickEvent;
 use gpui::{
     div, prelude::*, px, size, App, Application, Bounds, Context, FontWeight, KeyBinding, Window,
     WindowBounds, WindowOptions,
 };
 use gpui_component::Root;
+use std::rc::Rc;
 
-use crate::actions::{CloseDemoModal, FocusNext, FocusPrevious, OpenDemoModal, APP_KEY_CONTEXT};
+use crate::actions::{
+    CloseDemoModal, CreateDefaultConfig, FocusNext, FocusPrevious, OpenDemoModal, SaveConfig,
+    APP_KEY_CONTEXT,
+};
 use crate::app_state::{AppState, NotificationKind};
 use crate::components::{
     app_button, checkbox, modal_overlay, radio, status_badge, text_field, toast_host,
@@ -31,11 +36,42 @@ impl AppState {
         self.close_modal(cx);
         window.focus(&self.primary_focus);
     }
+
+    fn on_save_config(&mut self, _: &SaveConfig, _: &mut Window, cx: &mut Context<Self>) {
+        #[cfg(windows)]
+        self.save_config(cx);
+        #[cfg(not(windows))]
+        self.notify(NotificationKind::Info, "配置保存仅支持 Windows", cx);
+    }
+
+    fn on_create_default_config(
+        &mut self,
+        _: &CreateDefaultConfig,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        #[cfg(windows)]
+        self.create_default_config(cx);
+        #[cfg(not(windows))]
+        self.notify(NotificationKind::Info, "创建配置仅支持 Windows", cx);
+    }
 }
 
 impl Render for AppState {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = AppTheme::default();
+        let entity = cx.entity().downgrade();
+        let on_edit = Rc::new({
+            let entity = entity.clone();
+            move |id: u64, _: &ClickEvent, _: &mut Window, cx: &mut App| {
+                let _ = entity.update(cx, |state, cx| state.edit_route(id, cx));
+            }
+        });
+        let on_delete = Rc::new(
+            move |id: u64, _: &ClickEvent, _: &mut Window, cx: &mut App| {
+                let _ = entity.update(cx, |state, cx| state.delete_route(id, cx));
+            },
+        );
         let content = div()
             .id("ssh-router-app")
             .key_context(APP_KEY_CONTEXT)
@@ -44,6 +80,8 @@ impl Render for AppState {
             .on_action(cx.listener(Self::on_focus_previous))
             .on_action(cx.listener(Self::on_open_modal))
             .on_action(cx.listener(Self::on_close_modal))
+            .on_action(cx.listener(Self::on_save_config))
+            .on_action(cx.listener(Self::on_create_default_config))
             .relative()
             .size_full()
             .min_w(px(640.0))
@@ -80,7 +118,67 @@ impl Render for AppState {
                     .child(status_badge("GPUI MVP", StatusKind::Success, theme)),
             )
             .child(text_field("路由名称", &self.input, theme))
-            .child(config_main_window(&self.config, &self.route_editor, theme))
+            .child(config_main_window(
+                &self.config,
+                &self.route_editor,
+                theme,
+                on_edit,
+                on_delete,
+            ))
+            .child(
+                div()
+                    .flex()
+                    .gap_3()
+                    .child(app_button(
+                        "save-config",
+                        if self.config.is_dirty {
+                            "保存配置 *"
+                        } else {
+                            "保存配置"
+                        },
+                        ButtonVariant::Primary,
+                        matches!(
+                            self.config.load_state,
+                            crate::config_state::ConfigLoadState::Loading
+                        ),
+                        &self.save_focus,
+                        window,
+                        theme,
+                        cx.listener(|this, _, _, cx| {
+                            #[cfg(windows)]
+                            this.save_config(cx);
+                            #[cfg(not(windows))]
+                            this.notify(NotificationKind::Info, "配置保存仅支持 Windows", cx);
+                        }),
+                    ))
+                    .when(
+                        !matches!(
+                            self.config.load_state,
+                            crate::config_state::ConfigLoadState::Loaded
+                        ),
+                        |content| {
+                            content.child(app_button(
+                                "create-default-config",
+                                "创建默认配置",
+                                ButtonVariant::Secondary,
+                                false,
+                                &self.create_focus,
+                                window,
+                                theme,
+                                cx.listener(|this, _, _, cx| {
+                                    #[cfg(windows)]
+                                    this.create_default_config(cx);
+                                    #[cfg(not(windows))]
+                                    this.notify(
+                                        NotificationKind::Info,
+                                        "创建配置仅支持 Windows",
+                                        cx,
+                                    );
+                                }),
+                            ))
+                        },
+                    ),
+            )
             .child(
                 div()
                     .flex()
@@ -173,6 +271,8 @@ pub fn run() {
             KeyBinding::new("shift-tab", FocusPrevious, Some(APP_KEY_CONTEXT)),
             KeyBinding::new("cmd-enter", OpenDemoModal, Some(APP_KEY_CONTEXT)),
             KeyBinding::new("escape", CloseDemoModal, Some(APP_KEY_CONTEXT)),
+            KeyBinding::new("cmd-s", SaveConfig, Some(APP_KEY_CONTEXT)),
+            KeyBinding::new("cmd-shift-n", CreateDefaultConfig, Some(APP_KEY_CONTEXT)),
         ]);
 
         let bounds = Bounds::centered(None, size(px(800.0), px(680.0)), cx);
@@ -187,6 +287,8 @@ pub fn run() {
             },
             |window, cx| {
                 let app = cx.new(|cx| AppState::new(window, cx));
+                #[cfg(windows)]
+                app.update(cx, |state, cx| state.start_config_load(cx));
                 cx.new(|cx| Root::new(app, window, cx))
             },
         );

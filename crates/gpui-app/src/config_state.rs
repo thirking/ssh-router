@@ -81,7 +81,11 @@ impl ConfigState {
     }
 
     pub fn load_from_repository(&mut self, repository: &dyn ConfigRepository) {
-        match repository.load() {
+        self.apply_load_result(repository.load());
+    }
+
+    pub fn apply_load_result(&mut self, result: ssh_router_app_core::AppResult<Config>) {
+        match result {
             Ok(config) => self.apply_loaded(config),
             Err(AppError::Config(ConfigError::NotFound { .. })) => self.mark_not_found(),
             Err(AppError::Config(ConfigError::InvalidFormat { message })) => {

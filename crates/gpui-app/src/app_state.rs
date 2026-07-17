@@ -34,6 +34,8 @@ pub struct AppState {
     pub primary_focus: FocusHandle,
     pub secondary_focus: FocusHandle,
     pub danger_focus: FocusHandle,
+    pub save_focus: FocusHandle,
+    pub create_focus: FocusHandle,
     pub modal_focus: FocusHandle,
     next_notification_id: u64,
 }
@@ -46,7 +48,7 @@ impl AppState {
                 .default_value("PowerShell")
         });
         Self {
-            config: ConfigState::from_loaded(ssh_router_config::Config::default_config()),
+            config: ConfigState::default(),
             route_editor: RouteEditorState::default(),
             input,
             modal: None,
@@ -59,9 +61,92 @@ impl AppState {
             primary_focus: cx.focus_handle().tab_index(10).tab_stop(true),
             secondary_focus: cx.focus_handle().tab_index(11).tab_stop(true),
             danger_focus: cx.focus_handle().tab_index(12).tab_stop(true),
+            save_focus: cx.focus_handle().tab_index(13).tab_stop(true),
+            create_focus: cx.focus_handle().tab_index(14).tab_stop(true),
             modal_focus: cx.focus_handle().tab_index(20).tab_stop(true),
             next_notification_id: 2,
         }
+    }
+
+    fn notify_error(&mut self, message: impl Into<SharedString>, cx: &mut Context<Self>) {
+        self.notify(NotificationKind::Error, message, cx);
+    }
+
+    #[cfg(windows)]
+    pub fn save_config(&mut self, cx: &mut Context<Self>) {
+        use ssh_router_app_core::platform::windows::WindowsPlatform;
+        use ssh_router_app_core::{ConfigRepository, ConfigService};
+
+        if let Err(error) = self.config.validate() {
+            self.notify_error(format!("保存失败：{error:?}"), cx);
+            return;
+        }
+        let config = self.config.to_config();
+        let task = cx.background_spawn(async move {
+            let platform = WindowsPlatform::new().map_err(|error| error.to_string())?;
+            let repository = ConfigService::new(platform);
+            repository.save(&config).map_err(|error| error.to_string())
+        });
+        cx.spawn(async move |entity, cx| {
+            let result = task.await;
+            let _ = entity.update(cx, |state, cx| {
+                match state.config.apply_save_result(result) {
+                    Ok(()) => state.notify(NotificationKind::Success, "配置已保存", cx),
+                    Err(error) => state.notify_error(format!("保存失败：{error:?}"), cx),
+                }
+            });
+        })
+        .detach();
+    }
+
+    #[cfg(windows)]
+    pub fn create_default_config(&mut self, cx: &mut Context<Self>) {
+        use ssh_router_app_core::platform::windows::WindowsPlatform;
+        use ssh_router_app_core::{ConfigRepository, ConfigService};
+
+        let task = cx.background_spawn(async move {
+            let platform = WindowsPlatform::new().map_err(|error| error.to_string())?;
+            let repository = ConfigService::new(platform);
+            repository
+                .create_default()
+                .map_err(|error| error.to_string())
+        });
+        cx.spawn(async move |entity, cx| {
+            let result = task.await;
+            let _ = entity.update(cx, |state, cx| match result {
+                Ok(config) => {
+                    state.config.apply_loaded(config);
+                    state.notify(NotificationKind::Success, "已创建默认配置", cx);
+                }
+                Err(error) => state.notify_error(format!("创建默认配置失败：{error}"), cx),
+            });
+        })
+        .detach();
+    }
+
+    #[cfg(windows)]
+    pub fn start_config_load(&mut self, cx: &mut Context<Self>) {
+        use ssh_router_app_core::platform::windows::WindowsPlatform;
+        use ssh_router_app_core::{ConfigRepository, ConfigService};
+
+        self.config.load_state = crate::config_state::ConfigLoadState::Loading;
+        let repository = match WindowsPlatform::new() {
+            Ok(platform) => ConfigService::new(platform),
+            Err(error) => {
+                self.config.apply_load_result(Err(error));
+                cx.notify();
+                return;
+            }
+        };
+        let task = cx.background_spawn(async move { repository.load() });
+        cx.spawn(async move |entity, cx| {
+            let result = task.await;
+            let _ = entity.update(cx, |state, cx| {
+                state.config.apply_load_result(result);
+                cx.notify();
+            });
+        })
+        .detach();
     }
 
     pub fn notify(
@@ -93,6 +178,19 @@ impl AppState {
     pub fn close_modal(&mut self, cx: &mut Context<Self>) {
         self.modal = None;
         cx.notify();
+    }
+
+    pub fn edit_route(&mut self, id: u64, cx: &mut Context<Self>) {
+        if let Some(item) = self.config.routes.iter().find(|item| item.id == id) {
+            self.route_editor = RouteEditorState::new(Some((id, item.route.clone())));
+            cx.notify();
+        }
+    }
+
+    pub fn delete_route(&mut self, id: u64, cx: &mut Context<Self>) {
+        if self.config.delete_route(id) {
+            self.notify(NotificationKind::Info, "路由已从草稿中删除", cx);
+        }
     }
 }
 
