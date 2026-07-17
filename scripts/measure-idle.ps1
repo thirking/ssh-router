@@ -58,8 +58,14 @@ try {
         $previousCpuById[$_.Id] = $_.TotalProcessorTime.TotalMilliseconds
     }
     $previousTime = [DateTime]::UtcNow
-    for ($elapsed = 0; $elapsed -lt $ObservationSeconds; $elapsed += $IntervalSeconds) {
-        Start-Sleep -Seconds $IntervalSeconds
+    $observationStarted = $previousTime
+    $sampleCount = $ObservationSeconds / $IntervalSeconds
+    for ($sampleIndex = 1; $sampleIndex -le $sampleCount; $sampleIndex++) {
+        $targetTime = $observationStarted.AddSeconds($sampleIndex * $IntervalSeconds)
+        $remaining = $targetTime - [DateTime]::UtcNow
+        if ($remaining.TotalMilliseconds -gt 0) {
+            Start-Sleep -Milliseconds ([Math]::Ceiling($remaining.TotalMilliseconds))
+        }
         # 子进程可能在观察期间启动或重启，因此每轮重新发现整棵进程树。
         $processes = @(Get-ProcessTree $process)
         $nextCpuById = @{}
@@ -79,6 +85,7 @@ try {
         $wall = ($now - $previousTime).TotalMilliseconds
         $samples += [pscustomobject]@{
             TimestampUtc = $now.ToString("o")
+            ElapsedSeconds = [Math]::Round(($now - $observationStarted).TotalSeconds, 3)
             ProcessCount = $processes.Count
             WorkingSetMiB = [Math]::Round((($processes.WorkingSet64 | Measure-Object -Sum).Sum) / 1MB, 2)
             PrivateBytesMiB = [Math]::Round((($processes.PrivateMemorySize64 | Measure-Object -Sum).Sum) / 1MB, 2)
