@@ -42,9 +42,8 @@ impl RouteEditorInputs {
         window: &mut Window,
         cx: &mut Context<crate::app_state::AppState>,
     ) {
-        self.sftp_command.update(cx, |input, input_cx| {
-            input.set_value(value, window, input_cx)
-        });
+        self.sftp_command
+            .update(cx, |input, cx| input.set_value(value, window, cx));
     }
 
     pub fn set_route(
@@ -65,9 +64,7 @@ impl RouteEditorInputs {
             (&self.tmp_file_ext, route.tmp_file_ext.clone()),
         ];
         for (input, value) in values {
-            input.update(cx, |input, input_cx| {
-                input.set_value(value, window, input_cx)
-            });
+            input.update(cx, |input, cx| input.set_value(value, window, cx));
         }
     }
 }
