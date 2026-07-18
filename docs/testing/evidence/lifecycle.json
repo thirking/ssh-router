@@ -1,11 +1,16 @@
-﻿{
-    "ProcessId":  2524,
-    "MainWindowHandle":  155321070,
-    "WindowCreatedMilliseconds":  420.03,
-    "InitiallyVisible":  false,
-    "SecondaryExitCode":  0,
-    "SecondaryActivationMilliseconds":  79.98,
-    "CloseToTrayMilliseconds":  21.43,
-    "TrayRestoreMilliseconds":  45.63,
-    "ExitedFromTrayMenu":  true
+{
+    "Executable": "C:\\Users\\Thirking\\ssh-router-gpui-clean-3\\publish-tray-fallback\\ssh-router.exe",
+    "SessionId": 1,
+    "WindowCreatedMilliseconds": 480.47,
+    "InitialVisible": false,
+    "TrayRestoreMilliseconds": 118.92,
+    "RestoredFromTray": true,
+    "CloseToTrayMilliseconds": 14.98,
+    "HiddenAfterClose": true,
+    "SecondaryActivationMilliseconds": 178.10,
+    "SecondaryExited": true,
+    "SecondaryExitCode": 0,
+    "VisibleAfterSecondary": true,
+    "ExitedFromTrayMenu": true,
+    "Error": null
 }

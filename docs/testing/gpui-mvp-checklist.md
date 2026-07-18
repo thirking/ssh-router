@@ -2,7 +2,7 @@
 
 验证环境：Windows 11 Pro Build 26100，MSVC x86_64，NSIS 3.12。源码位于隔离纯 Rust 工作树 `ssh-router-gpui-clean-3`；已安装旧版 PID 19488 和安装目录始终未修改或终止。
 
-发布候选：`SSH-Router_0.0.8_x64-setup.exe`，6,665,387 bytes，SHA-256 `67749EC11B5C6EBBDB25E691464F11EC5F6C24EFF8BB57D552661DF19708E444`。
+发布候选：`SSH-Router_0.0.8_x64-setup.exe`，6,660,064 bytes，SHA-256 `2FAB5FFFA9AF8D934DACF66E1A2E2BA8949107FA549D8F0E006DC72E041CB26C`。
 
 ## 自动验证
 
@@ -11,6 +11,7 @@
 - [x] `cargo clippy -q --workspace --all-targets --target x86_64-pc-windows-msvc -- -D warnings`
 - [x] Release 构建 `ssh-router.exe` 与 `ssh-router-cli.exe`
 - [x] NSIS 3.12 生成发布候选安装包
+- [x] 交互 Session 1 生命周期脚本验证默认隐藏、托盘恢复、关闭隐藏、二次实例激活和托盘退出
 - [x] 仓库依赖扫描不含旧 Web 构建链；兼容保留的历史 GitHub Secret 名称已逐项确认
 
 ## 功能与生命周期

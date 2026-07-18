@@ -30,7 +30,31 @@ function Get-ProcessTree {
             $queue.Enqueue([int]$_.ProcessId)
         }
     }
-    return @(Get-Process -Id $ids.ToArray() -ErrorAction SilentlyContinue)
+    if ($ids.Count -eq 1) {
+        $RootProcess.Refresh()
+        if ($RootProcess.HasExited) { return @() }
+        return @($RootProcess)
+    }
+    $processes = [Collections.Generic.List[Diagnostics.Process]]::new()
+    $RootProcess.Refresh()
+    if (-not $RootProcess.HasExited) {
+        $processes.Add($RootProcess)
+    }
+    $descendantIds = @($ids | Where-Object { $_ -ne $RootProcess.Id })
+    if ($descendantIds.Count -gt 0) {
+        Get-Process -Id $descendantIds -ErrorAction SilentlyContinue |
+            Where-Object { $null -ne $_ } |
+            ForEach-Object { $processes.Add($_) }
+    }
+    return $processes.ToArray()
+}
+function Get-ProcessExitDetail {
+    param([Diagnostics.Process]$RootProcess)
+    $RootProcess.Refresh()
+    if ($RootProcess.HasExited) {
+        return "Root process exited with code $($RootProcess.ExitCode)"
+    }
+    return "Root process is alive but its process tree could not be enumerated"
 }
 try {
     if ($ownsProcess) {
@@ -53,7 +77,15 @@ try {
     Start-Sleep -Seconds $WarmupSeconds
     $samples = @()
     $previousCpuById = @{}
-    @(Get-ProcessTree $process) | ForEach-Object {
+    $initialProcesses = @(Get-ProcessTree $process)
+    if ($initialProcesses.Count -eq 0) {
+        $process.Refresh()
+        if ($process.HasExited) {
+            throw "$(Get-ProcessExitDetail $process) before observation started"
+        }
+        $initialProcesses = @($process)
+    }
+    $initialProcesses | ForEach-Object {
         $_.Refresh()
         $previousCpuById[$_.Id] = $_.TotalProcessorTime.TotalMilliseconds
     }
@@ -68,6 +100,15 @@ try {
         }
         # 子进程可能在观察期间启动或重启，因此每轮重新发现整棵进程树。
         $processes = @(Get-ProcessTree $process)
+        $processTreeFallback = $false
+        if ($processes.Count -eq 0) {
+            $process.Refresh()
+            if ($process.HasExited) {
+                throw "$(Get-ProcessExitDetail $process) during observation"
+            }
+            $processes = @($process)
+            $processTreeFallback = $true
+        }
         $nextCpuById = @{}
         $cpuDelta = 0.0
         $processes | ForEach-Object {
@@ -87,6 +128,7 @@ try {
             TimestampUtc = $now.ToString("o")
             ElapsedSeconds = [Math]::Round(($now - $observationStarted).TotalSeconds, 3)
             ProcessCount = $processes.Count
+            ProcessTreeFallback = $processTreeFallback
             WorkingSetMiB = [Math]::Round((($processes.WorkingSet64 | Measure-Object -Sum).Sum) / 1MB, 2)
             PrivateBytesMiB = [Math]::Round((($processes.PrivateMemorySize64 | Measure-Object -Sum).Sum) / 1MB, 2)
             CpuPercent = [Math]::Round(($cpuDelta / $wall / [Environment]::ProcessorCount) * 100, 3)
