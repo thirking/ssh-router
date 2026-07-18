@@ -70,12 +70,16 @@ impl AppState {
         });
         let route_inputs = RouteEditorInputs::new(window, cx);
         #[cfg(windows)]
-        let tray_icon = crate::window_controller::native_hwnd(window)
-            .ok()
-            .and_then(|hwnd| {
-                ssh_router_app_core::platform::windows::tray::TrayIcon::install(hwnd, "SSH Router")
-                    .ok()
-            });
+        let (tray_icon, tray_error) = match crate::window_controller::native_hwnd(window) {
+            Ok(hwnd) => match ssh_router_app_core::platform::windows::tray::TrayIcon::install(
+                hwnd,
+                "SSH Router",
+            ) {
+                Ok(icon) => (Some(icon), None),
+                Err(error) => (None, Some(format!("无法创建托盘图标：{error}"))),
+            },
+            Err(error) => (None, Some(format!("无法获取主窗口句柄：{error}"))),
+        };
         let subscriptions = vec![
             cx.subscribe(&route_inputs.port, |this, input, event: &InputEvent, cx| {
                 if !this.syncing_inputs && matches!(event, InputEvent::Change) {
@@ -148,6 +152,20 @@ impl AppState {
             current_version: env!("CARGO_PKG_VERSION").to_string(),
             ..UpdateState::default()
         };
+        let mut notifications = vec![Notification {
+            id: 1,
+            kind: NotificationKind::Info,
+            message: "GPUI 基础状态已初始化".into(),
+        }];
+        if let Some(error) = tray_error {
+            eprintln!("{error}");
+            notifications.push(Notification {
+                id: 2,
+                kind: NotificationKind::Error,
+                message: format!("{error}，已改为显示主窗口").into(),
+            });
+        }
+        let next_notification_id = notifications.len() as u64 + 1;
         Self {
             config: ConfigState::default(),
             route_editor: RouteEditorState::default(),
@@ -156,11 +174,7 @@ impl AppState {
             update,
             input,
             modal: None,
-            notifications: vec![Notification {
-                id: 1,
-                kind: NotificationKind::Info,
-                message: "GPUI 基础状态已初始化".into(),
-            }],
+            notifications,
             focus_handle: cx.focus_handle(),
             primary_focus: cx.focus_handle().tab_index(10).tab_stop(true),
             secondary_focus: cx.focus_handle().tab_index(11).tab_stop(true),
@@ -170,7 +184,7 @@ impl AppState {
             modal_focus: cx.focus_handle().tab_index(20).tab_stop(true),
             _route_subscriptions: subscriptions,
             syncing_inputs: false,
-            next_notification_id: 2,
+            next_notification_id,
             #[cfg(windows)]
             _tray_icon: tray_icon,
             #[cfg(windows)]

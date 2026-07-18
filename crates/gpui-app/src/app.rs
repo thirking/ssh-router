@@ -388,6 +388,13 @@ impl Render for AppState {
     }
 }
 
+fn should_reveal_window_after_tray_init(
+    startup_marker_present: bool,
+    tray_available: bool,
+) -> bool {
+    !startup_marker_present && !tray_available
+}
+
 pub fn run() {
     #[cfg(windows)]
     let startup_marker = std::env::var_os("SSH_ROUTER_STARTUP_MARKER");
@@ -426,13 +433,13 @@ pub fn run() {
             KeyBinding::new("cmd-shift-n", CreateDefaultConfig, Some(APP_KEY_CONTEXT)),
         ]);
 
-        let show_window = startup_marker.is_some();
+        let startup_marker_present = startup_marker.is_some();
         let bounds = Bounds::centered(None, size(px(800.0), px(680.0)), cx);
         let result = cx.open_window(
             WindowOptions {
                 window_bounds: Some(WindowBounds::Windowed(bounds)),
-                focus: show_window,
-                show: show_window,
+                focus: startup_marker_present,
+                show: startup_marker_present,
                 titlebar: Some(gpui::TitlebarOptions {
                     title: Some("SSH Router".into()),
                     ..Default::default()
@@ -463,6 +470,9 @@ pub fn run() {
                     )
                 });
                 let tray_available = app.read(cx).tray_available();
+                if should_reveal_window_after_tray_init(startup_marker_present, tray_available) {
+                    window.activate_window();
+                }
                 crate::window_controller::install_close_to_tray(window, cx, tray_available);
                 #[cfg(windows)]
                 app.update(cx, |state, cx| {
@@ -481,4 +491,17 @@ pub fn run() {
         }
         cx.activate(true);
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::should_reveal_window_after_tray_init;
+
+    #[test]
+    fn reveals_production_window_only_when_tray_is_unavailable() {
+        assert!(should_reveal_window_after_tray_init(false, false));
+        assert!(!should_reveal_window_after_tray_init(false, true));
+        assert!(!should_reveal_window_after_tray_init(true, false));
+        assert!(!should_reveal_window_after_tray_init(true, true));
+    }
 }
