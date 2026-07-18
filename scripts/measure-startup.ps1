@@ -56,15 +56,20 @@ try {
         }
         $timer.Stop()
         $startupMilliseconds = [Math]::Round($timer.Elapsed.TotalMilliseconds, 2)
-        # 防止单实例二次启动刚进入消息循环便退出，被误记为完整冷启动。
-        Start-Sleep -Milliseconds 500
-        $process.Refresh()
-        if ($process.HasExited) { throw "Application exited after reporting ready; another instance may already be running" }
-        $processCount = Get-ProcessTreeCount $process.Id
+        # 等待完整进程树和窗口证据，避免把刚进入消息循环的二次实例误记为冷启动。
+        $proofDeadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
+        do {
+            Start-Sleep -Milliseconds 100
+            $process.Refresh()
+            if ($process.HasExited) { throw "Application exited after reporting ready; another instance may already be running" }
+            $processCount = Get-ProcessTreeCount $process.Id
+            $mainWindowHandle = $process.MainWindowHandle.ToInt64()
+            $proofReady = $processCount -ge $MinimumProcessCount -and
+                (-not $RequireMainWindow -or $mainWindowHandle -ne 0)
+        } while (-not $proofReady -and [DateTime]::UtcNow -lt $proofDeadline)
         if ($processCount -lt $MinimumProcessCount) {
             throw "Process tree contains $processCount process(es), expected at least $MinimumProcessCount"
         }
-        $mainWindowHandle = $process.MainWindowHandle.ToInt64()
         if ($RequireMainWindow -and $mainWindowHandle -eq 0) {
             throw "Application reported ready without a main window"
         }

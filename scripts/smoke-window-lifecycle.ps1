@@ -29,8 +29,16 @@ public static class SshRouterWindowProbe
     [DllImport("user32.dll")]
     public static extern bool EnumThreadWindows(uint threadId, EnumWindowsProc callback, IntPtr lparam);
 
-    [DllImport("user32.dll")]
-    private static extern void keybd_event(byte virtualKey, byte scanCode, uint flags, UIntPtr extraInfo);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    public static extern IntPtr FindWindow(string className, string windowName);
+
+    [DllImport("oleacc.dll")]
+    private static extern int AccessibleObjectFromWindow(
+        IntPtr hwnd,
+        uint objectId,
+        ref Guid interfaceId,
+        [MarshalAs(UnmanagedType.Interface)] out object accessible
+    );
 
     public static IntPtr FindWindow(int processId)
     {
@@ -58,11 +66,19 @@ public static class SshRouterWindowProbe
         return IntPtr.Zero;
     }
 
-    public static void TapKey(byte virtualKey)
+    public static object GetAccessibleClient(IntPtr hwnd)
     {
-        const uint KeyUp = 0x0002;
-        keybd_event(virtualKey, 0, 0, UIntPtr.Zero);
-        keybd_event(virtualKey, 0, KeyUp, UIntPtr.Zero);
+        const uint ObjectIdClient = 0xFFFFFFFC;
+        Guid accessibleInterface = new Guid("618736e0-3c3d-11cf-810c-00aa00389b71");
+        object accessible;
+        int result = AccessibleObjectFromWindow(
+            hwnd,
+            ObjectIdClient,
+            ref accessibleInterface,
+            out accessible
+        );
+        Marshal.ThrowExceptionForHR(result);
+        return accessible;
     }
 }
 "@
@@ -184,10 +200,19 @@ try {
     if (-not [SshRouterWindowProbe]::PostMessage($window, 1066, [IntPtr]::Zero, [IntPtr]0x0205)) {
         throw "Failed to post the tray context-menu message"
     }
-    Start-Sleep -Milliseconds 400
-    [SshRouterWindowProbe]::TapKey(0x28)
-    [SshRouterWindowProbe]::TapKey(0x28)
-    [SshRouterWindowProbe]::TapKey(0x0D)
+    $menu = [IntPtr]::Zero
+    if (-not (Wait-Until {
+        $script:menu = [SshRouterWindowProbe]::FindWindow("#32768", $null)
+        return $script:menu -ne [IntPtr]::Zero
+    })) {
+        throw "Tray context menu window was not created"
+    }
+    $accessible = [SshRouterWindowProbe]::GetAccessibleClient($menu)
+    $itemCount = [int]$accessible.accChildCount
+    if ($itemCount -lt 1) {
+        throw "Tray context menu did not expose any accessible items"
+    }
+    $accessible.accDoDefaultAction($itemCount)
     $result.ExitedFromTrayMenu = Wait-Until { $primary.HasExited }
     if (-not $result.ExitedFromTrayMenu) {
         throw "Primary instance did not exit from the tray menu"
