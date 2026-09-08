@@ -46,6 +46,7 @@ pub fn app_button(
         .when(!disabled, |element| {
             element
                 .hover(move |style| style.bg(hover))
+                .active(move |style| style.opacity(theme.active_opacity))
                 .on_click(on_activate)
         })
         .when(disabled, |element| element.opacity(theme.disabled_opacity))

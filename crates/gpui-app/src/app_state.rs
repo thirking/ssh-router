@@ -80,6 +80,8 @@ impl AppState {
             },
             Err(error) => (None, Some(format!("无法获取主窗口句柄：{error}"))),
         };
+        #[cfg(not(windows))]
+        let tray_error: Option<String> = None;
         let subscriptions = vec![
             cx.subscribe(&route_inputs.port, |this, input, event: &InputEvent, cx| {
                 if !this.syncing_inputs && matches!(event, InputEvent::Change) {

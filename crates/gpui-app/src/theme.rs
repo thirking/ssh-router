@@ -22,6 +22,7 @@ pub struct AppTheme {
     pub border_width: Pixels,
     pub radius: Pixels,
     pub disabled_opacity: f32,
+    pub active_opacity: f32,
 }
 
 impl Default for AppTheme {
@@ -47,6 +48,7 @@ impl Default for AppTheme {
             border_width: px(1.0),
             radius: px(6.0),
             disabled_opacity: 0.45,
+            active_opacity: 0.8,
         }
     }
 }

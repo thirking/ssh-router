@@ -1,6 +1,6 @@
 use std::rc::Rc;
 
-use gpui::{div, prelude::*, AnyElement, App, ClickEvent, IntoElement, Window};
+use gpui::{div, prelude::*, AnyElement, App, ClickEvent, ElementId, IntoElement, Window};
 use gpui_component::{button::Button, Sizable};
 
 use crate::{config_state::UiRoute, theme::AppTheme};
@@ -33,6 +33,7 @@ pub fn route_table(
         let delete = on_delete.clone();
         let id = item.id;
         div()
+            .id(ElementId::NamedInteger("route-row".into(), id))
             .flex()
             .items_center()
             .gap_3()
@@ -40,6 +41,7 @@ pub fn route_table(
             .border_b_1()
             .border_color(theme.border.opacity(0.5))
             .text_color(theme.text)
+            .hover(move |style| style.bg(theme.surface_hover))
             .child(div().w(gpui::px(70.0)).child(item.route.port.to_string()))
             .child(div().w(gpui::px(140.0)).child(item.route.name.clone()))
             .child(div().flex_1().text_sm().child(item.route.shell.clone()))

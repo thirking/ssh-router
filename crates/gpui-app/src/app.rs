@@ -396,7 +396,6 @@ fn should_reveal_window_after_tray_init(
 }
 
 pub fn run() {
-    #[cfg(windows)]
     let startup_marker = std::env::var_os("SSH_ROUTER_STARTUP_MARKER");
     #[cfg(windows)]
     let instance_name = startup_marker
