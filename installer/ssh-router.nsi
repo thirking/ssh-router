@@ -22,8 +22,8 @@ InstallDirRegKey HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\SSH R
 RequestExecutionLevel user
 SetCompressor /SOLID lzma
 SetOverwrite on
-Icon "..\crates\gpui-app\assets\icon.ico"
-UninstallIcon "..\crates\gpui-app\assets\icon.ico"
+Icon "icon.ico"
+UninstallIcon "icon.ico"
 VIProductVersion "${VERSION_QUAD}"
 VIAddVersionKey "ProductName" "SSH Router"
 VIAddVersionKey "FileDescription" "SSH Router Installer"
@@ -79,8 +79,11 @@ Section "SSH Router" SEC_MAIN
     nsExec::ExecToStack '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -Command "Wait-Process -Id $ParentProcessId -Timeout 30 -ErrorAction SilentlyContinue"'
   SetOutPath "$INSTDIR"
   File /oname=ssh-router.exe "${SOURCE_DIR}\ssh-router.exe"
+  File /oname=ssh-router-backend.exe "${SOURCE_DIR}\ssh-router-backend.exe"
   SetOutPath "$INSTDIR\resources"
   File /oname=ssh-router-cli.exe "${SOURCE_DIR}\resources\ssh-router-cli.exe"
+  File /oname=ssh-router-desktop.node "${SOURCE_DIR}\resources\ssh-router-desktop.node"
+  File /oname=gpuix-native.node "${SOURCE_DIR}\resources\gpuix-native.node"
 
   SetOutPath "$INSTDIR"
   WriteUninstaller "$INSTDIR\uninstall.exe"
@@ -107,7 +110,10 @@ Section "Uninstall"
     MessageBox MB_OK|MB_ICONSTOP "SSH Router is still running. Exit it from the tray and retry uninstalling." /SD IDOK
     Abort
   Delete "$SMPROGRAMS\SSH Router.lnk"
+  Delete "$INSTDIR\ssh-router-backend.exe"
   Delete "$INSTDIR\resources\ssh-router-cli.exe"
+  Delete "$INSTDIR\resources\ssh-router-desktop.node"
+  Delete "$INSTDIR\resources\gpuix-native.node"
   RMDir "$INSTDIR\resources"
   Delete "$INSTDIR\uninstall.exe"
   RMDir "$INSTDIR"

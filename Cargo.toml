@@ -3,7 +3,7 @@ members = [
     "crates/config",
     "crates/cli",
     "crates/app-core",
-    "crates/gpui-app",
+    "crates/gpuix-app",
     "crates/update-packager",
 ]
 resolver = "2"

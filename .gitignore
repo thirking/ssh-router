@@ -13,6 +13,9 @@ publish/
 # Rust 构建产物
 /target
 /crates/*/target
+/node_modules/
+/apps/*/node_modules/
+/apps/*/dist/
 
 # 性能采样输出
 *-results.csv

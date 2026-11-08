@@ -10,7 +10,7 @@
 ./scripts/measure-startup.ps1 -Executable "C:\path\ssh-router.exe" -Iterations 10
 ```
 
-时间范围为创建进程到 GPUI 完成首帧并写出“窗口可交互”标记。
+时间范围为创建进程到 gpuix 完成首次布局并写出启动标记。配置加载时间应另行记录。
 
 旧版 v0.0.8 不支持该标记，使用系统输入空闲事件：
 
@@ -34,8 +34,6 @@
 ./scripts/measure-idle.ps1 -ProcessId 1234 -WarmupSeconds 10 -ObservationSeconds 60
 ```
 
-记录根进程及其后代进程汇总的 Working Set、Private Bytes 和按逻辑处理器归一化的 CPU；这使多进程旧版与单进程 GPUI 使用一致的应用级口径。可用 `-IncludeDescendants $false` 仅采样根进程。
+记录 GUI 及其业务后端进程汇总的 Working Set、Private Bytes 和按逻辑处理器归一化的 CPU。可用 `-IncludeDescendants $false` 仅采样根进程。
 
-旧版基线必须使用已发布的 v0.0.8 安装包；GPUI 基线使用对应发布候选安装包。不要使用修改过的本地 Tauri 构建链。
-
-当前记录：[v0.0.8 已发布版本](baselines/2026-07-17-v0.0.8-tauri.md) · [GPUI MVP 发布候选](baselines/2026-07-17-gpui-mvp.md)
+gpuix 版本的 Windows 性能基线尚未采样。每份基线必须对应明确的安装包哈希，不能将其他前端版本的测量结果用作 gpuix 数据。

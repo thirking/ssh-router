@@ -20,6 +20,11 @@ jobs:
         with:
           targets: x86_64-pc-windows-msvc
 
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.5
+
       - name: Cache Cargo
         uses: actions/cache@v4
         with:
@@ -43,7 +48,7 @@ jobs:
           $expected = $env:RELEASE_TAG.TrimStart('v')
           foreach ($path in @(
             "crates/app-core/Cargo.toml",
-            "crates/gpui-app/Cargo.toml",
+            "crates/gpuix-app/Cargo.toml",
             "crates/cli/Cargo.toml",
             "crates/config/Cargo.toml"
           )) {
@@ -52,6 +57,10 @@ jobs:
               throw "Version mismatch: tag=$expected; $path=$($match.Matches[0].Groups[1].Value)"
             }
           }
+          $frontendVersion = (Get-Content "apps/gpuix/package.json" -Raw | ConvertFrom-Json).version
+          if ($frontendVersion -ne $expected) {
+            throw "Frontend version mismatch: tag=$expected; frontend=$frontendVersion"
+          }
 
       - name: Test Rust workspace
         shell: pwsh
@@ -59,7 +68,7 @@ jobs:
           cargo test --workspace --target x86_64-pc-windows-msvc
           cargo clippy --workspace --target x86_64-pc-windows-msvc -- -D warnings
 
-      - name: Build GPUI application and NSIS installer
+      - name: Build gpuix application and NSIS installer
         shell: cmd
         run: build.cmd publish
 
@@ -81,7 +90,7 @@ jobs:
           @"
           ## SSH Router $env:RELEASE_TAG
 
-          Windows OpenSSH 多端口智能路由器，使用纯 Rust + GPUI 原生界面。
+          Windows OpenSSH 多端口智能路由器，使用 gpuix 原生界面与 Rust 业务核心。
           "@ | Set-Content release-notes.md -Encoding UTF8
           ./scripts/package-update.ps1 `
             -Version $version `

@@ -6,10 +6,11 @@ Windows OpenSSH 多端口智能路由器，带可视化配置界面。
 
 ## 架构
 
-双程序方案：
+界面与 SSH 路由独立运行：
 
 - **ssh-router-cli.exe**：被 sshd 作为 `DefaultShell` 调起的路由 CLI（Rust），每次 SSH 连接时启动，根据配置文件路由到对应 shell
-- **ssh-router.exe**：Rust + GPUI 原生托盘 GUI，常驻系统托盘，可视化配置端口路由
+- **ssh-router.exe**：gpuix + React 原生托盘 GUI，使用 GPUI 渲染，不依赖 WebView
+- **ssh-router-backend.exe**：GUI 通过标准输入输出管道调用的 Rust 业务进程，负责配置、提权和签名更新
 
 两者通过 `C:\ProgramData\ssh\ssh-router.json` 配置文件解耦。CLI 每次被 sshd 调起时读取该 JSON，因此 GUI 中保存配置后下一次 SSH 连接立即生效，无需重启 sshd 或重新编译。
 
@@ -20,7 +21,8 @@ Windows OpenSSH 多端口智能路由器，带可视化配置界面。
 | `crates/config/` | 共享 `Config` / `Route` 结构与默认配置（被 CLI 与 GUI 共用） |
 | `crates/cli/` | `ssh-router-cli.exe`：Win32 `CreateProcessW` + Job Object 路由实现 |
 | `crates/app-core/` | 配置、状态、提权、托盘、单实例和签名更新业务核心 |
-| `crates/gpui-app/` | `ssh-router.exe`：GPUI 原生界面与 Windows 生命周期 |
+| `apps/gpuix/` | `ssh-router.exe`：React/TypeScript 界面、交互状态和构建脚本 |
+| `crates/gpuix-app/` | Rust 管道后端与 Windows 托盘、单实例 Node-API 模块 |
 | `crates/update-packager/` | 发布安装包 minisign 签名与 `latest.json` 工具 |
 | `installer/` | NSIS 安装包脚本和 Windows 图标 |
 | `fix-sshd.ps1` | 一次性 sshd 修复脚本（保留） |
@@ -129,15 +131,16 @@ SFTP 子系统（`Subsystem sftp sftp-server.exe`）也通过 DefaultShell 执�
 
 ## 编译
 
-需要 Rust、MSVC 和 NSIS。GPUI Windows 程序必须在 Windows 上原生构建。
+Windows 安装包需要 Rust、Bun、MSVC 和 NSIS。Bun 将界面编译成独立程序，gpuix 原生渲染模块随包分发，用户无需安装 Node.js 或 Bun。
 
 ### 前置条件
 
 - Rust toolchain（`rustup target add x86_64-pc-windows-msvc`）
 - Windows 10/11 SDK（MSVC 链接器，随 Visual Studio Build Tools 提供）
 - NSIS 3.x（提供 `makensis.exe`）
+- Bun 1.3.5
 
-### 构建两个 exe
+### 构建 Windows 安装包
 
 ```bash
 ./build.sh
@@ -154,14 +157,32 @@ build.cmd "D:\deploy"
 
 脚本会依次执行：
 
-1. 使用 Cargo 构建 `ssh-router-cli.exe` 和 GPUI `ssh-router.exe`
-2. 将 CLI 放入 `resources/`，并调用 NSIS 生成兼容升级安装包
+1. 安装锁定的前端依赖，执行 TypeScript 检查和交互状态测试
+2. 使用 Cargo 构建 CLI、业务后端和 Windows Node-API 模块
+3. 使用 Bun 编译 gpuix 界面，调用 NSIS 生成安装包
 
 产物汇集到 `publish/`（或指定目录）下：
 
-- `ssh-router.exe`：GPUI 原生托盘 GUI
+- `ssh-router.exe`：gpuix 原生托盘 GUI
+- `ssh-router-backend.exe`：Rust 业务后端
+- `resources/ssh-router-desktop.node`：托盘和单实例支持
+- `resources/gpuix-native.node`：gpuix 原生渲染器
 - `resources/ssh-router-cli.exe`：随安装包部署的路由 CLI
 - `SSH-Router_<version>_x64-setup.exe`：NSIS 安装包
+
+### 本地开发
+
+```bash
+cd apps/gpuix
+bun install --frozen-lockfile
+bun run dev
+bun run typecheck
+bun test
+```
+
+`bun run dev` 会先构建 Rust 后端。macOS 可验证界面和本地配置；系统管理和应用更新仅支持 Windows。非 Windows 默认配置路径为 `~/.config/ssh-router/ssh-router.json`，可通过 `SSH_ROUTER_CONFIG` 指定测试文件。
+
+原生桌面自动化：先执行 `cargo build -p ssh-router-gpuix`，再在 `apps/gpuix` 运行 `bun run smoke`。测试使用临时配置，不修改系统 SSH 配置。
 
 ## 安装
 
@@ -175,7 +196,7 @@ build.cmd "D:\deploy"
 
 ### 2. 一键安装（GUI 内）
 
-运行 SSH Router（从开始菜单或桌面快捷方式启动），主界面上方有**安装状态**面板和**快捷操作**按钮区：
+运行 SSH Router，在**系统与更新**页查看安装状态和执行快捷操作：
 
 1. 点击 **「安装/更新 CLI」** — 从安装包释放 CLI 到 `C:\ProgramData\ssh\ssh-router-cli.exe`（会弹出 UAC 提权）
 2. 点击 **「设置 DefaultShell」** — 自动设置注册表 `HKLM:\SOFTWARE\OpenSSH\DefaultShell` 指向 CLI（UAC 提权）
@@ -246,7 +267,7 @@ Restart-Service sshd -Force
 
 - 应用启动时检查一次稳定版更新，常驻托盘期间每 24 小时再次检查
 - 检测到新版本后显示版本号和更新说明；确认后下载、验证签名、安装并重启
-- 主界面的“软件更新”区域可随时手动检查
+- “系统与更新”页可随时手动检查
 - GUI 更新后如果已部署 CLI 与安装包内版本不一致，会提示通过 UAC 同步；取消后可使用“安装/更新 CLI”重试
 - 自动检查网络失败不会影响托盘、路由配置或 SSH 服务
 
@@ -271,14 +292,14 @@ Restart-Service sshd -Force
 
 启动时间、空闲内存和 CPU 的可重复采样方法见 [`docs/performance/README.md`](docs/performance/README.md)。MVP 仅记录数据，不设置发布失败阈值。
 
-MVP 发布验证步骤与证据见 [`docs/testing/gpui-mvp-checklist.md`](docs/testing/gpui-mvp-checklist.md)。
+gpuix 验证范围与待验项目见 [`docs/testing/gpuix-checklist.md`](docs/testing/gpuix-checklist.md)。
 
 ## 已知限制
 
 - WSL 发行版名称和 home 路径写在命令模板字符串中（非独立字段），改发行版需编辑模板
 - 不支持 `ForceCommand`（如果 sshd_config 中设置了 ForceCommand，会与本程序冲突）
 - SFTP 通过 `cmd.exe /c` 执行，读取的是 Windows 文件系统（`C:\` 路径），不是 WSL 文件系统（`/home/` 路径）
-- GPUI GUI 需在 Windows 上原生构建；CLI 可在 macOS 上检查，但 Windows 发布产物由 MSVC 生成
+- Windows 安装包需在 Windows 上构建；macOS 本地界面不提供 OpenSSH 系统管理功能
 
 ## 排错
 
