@@ -11,6 +11,8 @@
 | 单实例、托盘、关闭隐藏和 Explorer 恢复 | Node-API 模块 → Win32 `single_instance` / `tray` |
 | 发布构建 | Bun 独立程序 + Rust 后端 + Node-API 模块 + NSIS |
 
+默认窗口为 620×760，最小窗口为 520×440。界面参考 [Zed One Dark](https://github.com/zed-industries/zed/blob/main/assets/themes/one/one.json)，使用灰黑配色、11–12px 正文、紧凑控件和行式路由列表；弹窗内容独立滚动，操作按钮固定可见。
+
 界面只通过结构化请求调用列出的业务操作。配置校验、原子写入、UAC、更新源和 minisign 公钥由 Rust 核心管理。
 
 `config.save` 保存请求发起时的快照；保存期间产生的新修改仍保留为未保存草稿。重新加载未保存草稿、删除路由和安装更新需要界面确认。

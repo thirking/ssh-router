@@ -34,10 +34,10 @@ renderer.init({
   title: "SSH Router",
   appName: "SSH Router",
   appId: "sshrouter.SSHRouter",
-  width: Number(process.env.SSH_ROUTER_WIDTH) || 1020,
+  width: Number(process.env.SSH_ROUTER_WIDTH) || 620,
   height: Number(process.env.SSH_ROUTER_HEIGHT) || 760,
-  minWidth: 640,
-  minHeight: 520,
+  minWidth: 520,
+  minHeight: 440,
   show:
     !desktop ||
     process.env.SSH_ROUTER_SHOW === "1" ||

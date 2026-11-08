@@ -24,30 +24,32 @@ import { BackendError, type Config, type Route } from "./backend";
 import { AppModel, dirty, filterRoutes, routeErrors } from "./model";
 
 const C = {
-  bg: "#101722",
-  panel: "#182231",
-  input: "#101925",
-  border: "#2B3B50",
-  text: "#E8EEF6",
-  muted: "#96A9BF",
-  accent: "#70BAFF",
-  primary: "#2568B5",
-  hover: "#263A52",
-  green: "#78D8AE",
-  red: "#FF929B",
-  amber: "#F4CA79",
+  bg: "#282C33",
+  panel: "#2F343E",
+  title: "#3B414D",
+  input: "#282C33",
+  border: "#464B57",
+  divider: "#363C46",
+  text: "#DCE0E5",
+  muted: "#A9AFBC",
+  accent: "#74ADE8",
+  primary: "#293B5B",
+  hover: "#363C46",
+  green: "#A1C181",
+  red: "#D07277",
+  amber: "#DEC184",
 };
 const row: StyleDesc = {
   display: "flex",
   flexDirection: "row",
   alignItems: "center",
-  gap: 10,
+  gap: 6,
 };
-const column: StyleDesc = { display: "flex", flexDirection: "column", gap: 10 };
+const column: StyleDesc = { display: "flex", flexDirection: "column", gap: 8 };
 const panel: StyleDesc = {
   ...column,
-  padding: 20,
-  borderRadius: 12,
+  padding: 12,
+  borderRadius: 3,
   backgroundColor: C.panel,
   borderWidth: 1,
   borderColor: C.border,
@@ -56,7 +58,7 @@ const panel: StyleDesc = {
 function Text({
   children,
   color = C.text,
-  size = 14,
+  size = 12,
   style,
 }: {
   children: ReactNode;
@@ -70,7 +72,11 @@ function Text({
   )
     ? parts.join("")
     : children;
-  return <text style={{ color, fontSize: size, ...style }}>{content}</text>;
+  return (
+    <text style={{ color, fontSize: size, fontWeight: 400, ...style }}>
+      {content}
+    </text>
+  );
 }
 
 function Action({
@@ -96,17 +102,17 @@ function Action({
       style={{
         ...row,
         justifyContent: "center",
-        paddingLeft: 13,
-        paddingRight: 13,
-        height: 34,
+        paddingLeft: 8,
+        paddingRight: 8,
+        height: 26,
         flexShrink: 0,
-        borderRadius: 7,
+        borderRadius: 3,
         borderWidth: 1,
-        borderColor: primary ? C.primary : C.border,
+        borderColor: primary ? "#47679E" : C.border,
         backgroundColor: primary ? C.primary : C.panel,
         opacity: disabled ? 0.4 : 1,
         cursor: disabled ? "default" : "pointer",
-        hover: { backgroundColor: primary ? "#327DCD" : C.hover },
+        hover: { backgroundColor: primary ? "#354C70" : C.hover },
         active: { opacity: 0.65 },
         focusVisible: {
           outlineWidth: 2,
@@ -115,7 +121,7 @@ function Action({
         },
       }}
     >
-      <Text color={danger ? C.red : C.text} size={13}>
+      <Text color={danger ? C.red : primary ? C.accent : C.text} size={11}>
         {children}
       </Text>
     </Button>
@@ -133,6 +139,8 @@ function Field({
   readOnly,
   inputRef,
   style,
+  hideLabel = false,
+  placeholder,
 }: {
   label: string;
   value: string;
@@ -144,16 +152,21 @@ function Field({
   readOnly?: boolean;
   inputRef?: React.Ref<PublicInstance>;
   style?: StyleDesc;
+  hideLabel?: boolean;
+  placeholder?: string;
 }) {
   return (
-    <div style={{ ...column, gap: 5, minWidth: 0, flexGrow: 1, ...style }}>
-      <Text size={12} color={C.muted}>
-        {label}
-      </Text>
+    <div style={{ ...column, gap: 4, minWidth: 0, flexGrow: 1, ...style }}>
+      {!hideLabel && (
+        <Text size={11} color={C.muted}>
+          {label}
+        </Text>
+      )}
       <input
         ref={inputRef}
         testId={testId}
         value={value}
+        placeholder={placeholder}
         autoFocus={autoFocus}
         readOnly={readOnly}
         aria-label={label}
@@ -161,15 +174,16 @@ function Field({
         onChange={(event) => change(event.value ?? "")}
         theme={{ caret: C.accent }}
         style={{
-          height: 36,
-          paddingLeft: 10,
-          paddingRight: 10,
+          height: 28,
+          paddingLeft: 7,
+          paddingRight: 7,
           backgroundColor: C.input,
           borderWidth: 1,
-          borderRadius: 6,
+          borderRadius: 3,
           borderColor: error ? C.red : C.border,
           color: C.text,
-          fontSize: 13,
+          fontSize: 12,
+          fontWeight: 400,
           focusVisible: { borderColor: C.accent },
         }}
       />
@@ -213,14 +227,14 @@ function Modal({
         <DialogPopup
           testId={testId}
           style={{
-            width: Math.min(600, size.width - 36),
-            maxHeight: Math.max(260, size.height - 42),
+            width: Math.min(520, size.width - 24),
+            maxHeight: Math.max(240, size.height - 32),
             ...panel,
-            padding: 22,
+            padding: 14,
             overflow: "hidden",
           }}
         >
-          <Text size={20} style={{ flexShrink: 0 }}>
+          <Text size={14} style={{ flexShrink: 0, fontWeight: 600 }}>
             {title}
           </Text>
           <motion.div
@@ -230,10 +244,10 @@ function Modal({
             style={{
               ...column,
               position: "relative",
-              gap: 16,
+              gap: 10,
               minHeight: 0,
               flexShrink: 1,
-              maxHeight: Math.max(140, size.height - 200),
+              maxHeight: Math.max(120, size.height - 150),
               overflowY: "scroll",
               scrollbarColor: C.border,
             }}
@@ -380,8 +394,8 @@ function Editor({
         aria-pressed={route.default}
         style={{
           ...row,
-          padding: 8,
-          borderRadius: 6,
+          padding: 4,
+          borderRadius: 3,
           focusVisible: { outlineColor: C.accent, outlineWidth: 2 },
         }}
       >
@@ -421,7 +435,7 @@ export function App({
   const ready = useRef(false);
   const renderer = useGpuix();
   const size = useWindowSize();
-  const compact = size.width < 760;
+  const compact = size.width < 680;
   const busy = !!state.busy;
   const changed = dirty(state);
   const windows = state.hello?.windows ?? false;
@@ -514,71 +528,89 @@ export function App({
         width: "100%",
         backgroundColor: C.bg,
         fontFamily:
-          process.platform === "win32" ? "Microsoft YaHei UI" : "PingFang SC",
+          process.platform === "win32" ? "Segoe UI" : "Helvetica Neue",
       }}
     >
       <div
         style={{
           ...row,
-          padding: compact ? 18 : 24,
-          justifyContent: "space-between",
+          height: 40,
+          paddingLeft: 12,
+          paddingRight: 12,
+          flexShrink: 0,
+          backgroundColor: C.title,
           borderBottomWidth: 1,
-          borderColor: C.border,
+          borderColor: C.divider,
         }}
       >
-        <div style={{ ...column, gap: 5 }}>
-          <Text size={24} style={{ fontWeight: 700 }}>
-            SSH Router
-          </Text>
-          <Text size={12} color={C.muted}>
-            Windows OpenSSH 端口路由管理
-          </Text>
-        </div>
-        <div style={{ ...row, flexWrap: "wrap", justifyContent: "flex-end" }}>
-          <Text size={12} color={changed ? C.amber : C.green}>
-            {changed ? "● 未保存" : config ? "✓ 已保存" : "配置未加载"}
-          </Text>
-          <Action testId="reload" onClick={reload} disabled={busy}>
-            重新加载
-          </Action>
-          <Action
-            testId="save"
-            primary
-            onClick={() => void model.save()}
-            disabled={!changed || !config || busy}
-          >
-            {state.busy === "正在保存" ? "保存中…" : "保存配置"}
-          </Action>
-        </div>
+        <Text size={13} style={{ fontWeight: 600 }}>
+          SSH Router
+        </Text>
+        <div style={{ flexGrow: 1 }} />
+        <Text size={10} color={changed ? C.amber : C.muted}>
+          {changed ? "● 未保存" : config ? "已保存" : "加载中"}
+        </Text>
+        <Action testId="reload" onClick={reload} disabled={busy}>
+          重新加载
+        </Action>
+        <Action
+          testId="save"
+          primary
+          onClick={() => void model.save()}
+          disabled={!changed || !config || busy}
+        >
+          {state.busy === "正在保存" ? "保存中…" : "保存配置"}
+        </Action>
       </div>
       <div
         style={{
           ...row,
-          paddingLeft: compact ? 18 : 24,
-          paddingTop: 12,
-          paddingBottom: 12,
+          gap: 0,
+          height: 32,
+          flexShrink: 0,
+          backgroundColor: C.panel,
           borderBottomWidth: 1,
-          borderColor: C.border,
+          borderColor: C.divider,
         }}
       >
-        <Action
-          testId="tab-routes"
-          primary={tab === "routes"}
-          onClick={() => setTab("routes")}
-        >
-          端口路由
-        </Action>
-        <Action
-          testId="tab-system"
-          primary={tab === "system"}
-          onClick={() => setTab("system")}
-        >
-          系统与更新
-        </Action>
+        {(
+          [
+            { id: "routes", label: "端口路由" },
+            { id: "system", label: "系统与更新" },
+          ] as const
+        ).map((item) => (
+          <Button
+            key={item.id}
+            testId={`tab-${item.id}`}
+            onClick={() => setTab(item.id)}
+            aria-pressed={tab === item.id}
+            style={{
+              ...row,
+              justifyContent: "center",
+              height: 32,
+              width: 108,
+              cursor: "pointer",
+              borderRightWidth: 1,
+              borderBottomWidth: 2,
+              borderColor: tab === item.id ? C.accent : C.divider,
+              backgroundColor: tab === item.id ? C.bg : C.panel,
+              hover: { backgroundColor: C.hover },
+              focusVisible: {
+                outlineWidth: 1,
+                outlineColor: C.accent,
+                outlineOffset: -2,
+              },
+            }}
+          >
+            <Text size={11} color={tab === item.id ? C.text : C.muted}>
+              {item.label}
+            </Text>
+          </Button>
+        ))}
         <div style={{ flexGrow: 1 }} />
         {!compact && (
-          <Text color={C.muted} size={11}>
-            Ctrl+S 保存 · Ctrl+N 新增 · Ctrl+F 搜索
+          <Text color={C.muted} size={10} style={{ marginRight: 12 }}>
+            Ctrl+S 保存 · Ctrl+N 新增
           </Text>
         )}
       </div>
@@ -587,8 +619,8 @@ export function App({
         testId="content"
         style={{
           ...column,
-          gap: 18,
-          padding: compact ? 18 : 24,
+          gap: 12,
+          padding: 12,
           minHeight: 0,
           flexGrow: 1,
           overflowY: "scroll",
@@ -621,22 +653,25 @@ export function App({
         )}
         {tab === "routes" ? (
           <>
-            <div style={{ ...row, alignItems: "flex-end", flexWrap: "wrap" }}>
-              <div style={{ ...column, gap: 6, flexGrow: 1 }}>
-                <Text size={19}>端口路由</Text>
-                <Text size={12} color={C.muted}>
-                  管理 SSH 端口对应的 Shell 环境
-                </Text>
-              </div>
-              <div style={{ width: compact ? 180 : 240 }}>
-                <Field
-                  label="搜索端口、名称或路径"
-                  testId="search"
-                  inputRef={search}
-                  value={query}
-                  change={setQuery}
-                />
-              </div>
+            <div style={{ ...row, justifyContent: "space-between" }}>
+              <Text size={12} style={{ fontWeight: 600 }}>
+                端口路由 · {config?.routes.length ?? 0}
+              </Text>
+              <Text size={10} color={C.muted}>
+                端口 → Shell 环境
+              </Text>
+            </div>
+            <div style={{ ...row, gap: 8 }}>
+              <Field
+                label="搜索端口、名称或路径"
+                hideLabel
+                placeholder="搜索端口、名称或路径…"
+                testId="search"
+                inputRef={search}
+                value={query}
+                change={setQuery}
+                style={{ flexBasis: 0 }}
+              />
               <Action
                 testId="add-route"
                 primary
@@ -646,106 +681,169 @@ export function App({
                 ＋ 添加路由
               </Action>
             </div>
-            {config &&
-              (shown.length ? (
-                shown.map(({ route, index }) => (
-                  <motion.div
-                    key={`${index}-${route.port}`}
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    transition={{ duration: 0.15 }}
-                    style={{
-                      ...panel,
-                      gap: 12,
-                      hover: {
-                        borderColor: "#49749A",
-                        backgroundColor: "#1C2B3D",
-                      },
-                    }}
-                  >
-                    <div
-                      style={{
-                        ...row,
-                        justifyContent: "space-between",
-                        flexWrap: "wrap",
-                      }}
+            {config && (
+              <div
+                style={{
+                  ...column,
+                  gap: 0,
+                  borderWidth: 1,
+                  borderColor: C.divider,
+                  borderRadius: 3,
+                  overflow: "hidden",
+                }}
+              >
+                <div
+                  style={{
+                    ...row,
+                    height: 26,
+                    paddingLeft: 10,
+                    paddingRight: 10,
+                    backgroundColor: C.panel,
+                    borderBottomWidth: 1,
+                    borderColor: C.divider,
+                  }}
+                >
+                  <Text size={10} color={C.muted} style={{ width: 42 }}>
+                    端口
+                  </Text>
+                  <Text size={10} color={C.muted} style={{ flexGrow: 1 }}>
+                    目标环境
+                  </Text>
+                  <Text size={10} color={C.muted}>
+                    操作
+                  </Text>
+                </div>
+                {shown.length ? (
+                  shown.map(({ route, index }) => (
+                    <motion.div
+                      key={`${index}-${route.port}`}
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      transition={{ duration: 0.12 }}
+                      style={{ hover: { backgroundColor: C.hover } }}
                     >
-                      <div style={{ ...row, gap: 12 }}>
-                        <div
+                      <div
+                        testId={`route-row-${route.port}`}
+                        style={{
+                          ...row,
+                          gap: 8,
+                          minHeight: 56,
+                          paddingLeft: 10,
+                          paddingRight: 10,
+                          paddingTop: 7,
+                          paddingBottom: 7,
+                          borderBottomWidth: 1,
+                          borderColor: C.divider,
+                        }}
+                      >
+                        <Text
+                          color={C.accent}
+                          size={12}
                           style={{
-                            padding: 9,
-                            borderRadius: 8,
-                            backgroundColor: "#213E5C",
+                            width: 40,
+                            flexShrink: 0,
+                            fontFamily:
+                              process.platform === "win32"
+                                ? "Consolas"
+                                : "Menlo",
                           }}
                         >
+                          {route.port}
+                        </Text>
+                        <div
+                          style={{
+                            ...column,
+                            gap: 2,
+                            flexGrow: 1,
+                            flexBasis: 0,
+                            minWidth: 0,
+                          }}
+                        >
+                          <div style={{ ...row, gap: 6 }}>
+                            <Text
+                              size={12}
+                              style={{
+                                minWidth: 0,
+                                flexShrink: 1,
+                                whiteSpace: "nowrap",
+                                textOverflow: "ellipsis",
+                              }}
+                            >
+                              {route.name}
+                            </Text>
+                            {route.default && (
+                              <Text
+                                color={C.green}
+                                size={10}
+                                style={{ flexShrink: 0 }}
+                              >
+                                默认
+                              </Text>
+                            )}
+                          </div>
                           <Text
-                            color={C.accent}
-                            size={19}
-                            style={{ fontWeight: 700 }}
+                            size={10}
+                            color={C.muted}
+                            style={{
+                              whiteSpace: "nowrap",
+                              textOverflow: "ellipsis",
+                              fontFamily:
+                                process.platform === "win32"
+                                  ? "Consolas"
+                                  : "Menlo",
+                            }}
                           >
-                            {route.port}
+                            {route.shell}
                           </Text>
                         </div>
-                        <Text size={16}>{route.name}</Text>
-                        {route.default && (
-                          <Text color={C.green} size={11}>
-                            默认路由
-                          </Text>
-                        )}
-                      </div>
-                      <div style={row}>
-                        {!route.default && (
+                        <div style={{ ...row, gap: 4, flexShrink: 0 }}>
+                          {!route.default && (
+                            <Action
+                              testId={`default-${route.port}`}
+                              onClick={() => model.setDefault(index)}
+                              disabled={busy}
+                            >
+                              设为默认
+                            </Action>
+                          )}
                           <Action
-                            testId={`default-${route.port}`}
-                            onClick={() => model.setDefault(index)}
+                            testId={`edit-${route.port}`}
+                            onClick={() => setEditor({ index })}
                             disabled={busy}
                           >
-                            设为默认
+                            编辑
                           </Action>
-                        )}
-                        <Action
-                          testId={`edit-${route.port}`}
-                          onClick={() => setEditor({ index })}
-                          disabled={busy}
-                        >
-                          编辑
-                        </Action>
-                        <Action
-                          testId={`delete-${route.port}`}
-                          danger
-                          disabled={busy || config.routes.length <= 1}
-                          onClick={() =>
-                            setConfirm({
-                              title: `删除路由 ${route.port}？`,
-                              message: `将从草稿中移除“${route.name}”。${route.default ? "默认路由将切换为其余第一条路由。" : ""}保存配置后生效。`,
-                              label: "删除路由",
-                              danger: true,
-                              action: () => model.removeRoute(index),
-                            })
-                          }
-                        >
-                          删除
-                        </Action>
+                          <Action
+                            testId={`delete-${route.port}`}
+                            danger
+                            disabled={busy || config.routes.length <= 1}
+                            onClick={() =>
+                              setConfirm({
+                                title: `删除路由 ${route.port}？`,
+                                message: `将从草稿中移除“${route.name}”。${route.default ? "默认路由将切换为其余第一条路由。" : ""}保存配置后生效。`,
+                                label: "删除路由",
+                                danger: true,
+                                action: () => model.removeRoute(index),
+                              })
+                            }
+                          >
+                            删除
+                          </Action>
+                        </div>
                       </div>
-                    </div>
-                    <Text
-                      size={12}
-                      color={C.muted}
-                      style={{ whiteSpace: "normal" }}
-                    >
-                      {route.shell}
-                    </Text>
-                  </motion.div>
-                ))
-              ) : (
-                <div style={panel}>
-                  <Text>未找到匹配路由</Text>
-                  <Action onClick={() => setQuery("")}>清空搜索</Action>
-                </div>
-              ))}
+                    </motion.div>
+                  ))
+                ) : (
+                  <div style={{ ...column, padding: 16 }}>
+                    <Text color={C.muted}>未找到匹配路由</Text>
+                    <Action onClick={() => setQuery("")}>清空搜索</Action>
+                  </div>
+                )}
+              </div>
+            )}
             {config && (
               <div style={panel}>
-                <Text size={17}>SFTP 命令</Text>
+                <Text size={12}>SFTP 命令</Text>
                 <Field
                   label="SFTP 子系统启动命令"
                   testId="sftp"
@@ -768,7 +866,7 @@ export function App({
           <>
             <div style={panel}>
               <div style={{ ...row, justifyContent: "space-between" }}>
-                <Text size={19}>安装状态</Text>
+                <Text size={12}>安装状态</Text>
                 <Action
                   testId="refresh-status"
                   onClick={() => void model.refreshStatus()}
@@ -819,12 +917,25 @@ export function App({
                     style={{
                       ...row,
                       justifyContent: "space-between",
-                      paddingTop: 7,
-                      paddingBottom: 7,
+                      paddingTop: 4,
+                      paddingBottom: 4,
                     }}
                   >
-                    <Text size={13}>{item.name}</Text>
-                    <Text size={12} color={item.ok ? C.green : C.amber}>
+                    <Text size={11} style={{ flexShrink: 0 }}>
+                      {item.name}
+                    </Text>
+                    <Text
+                      size={11}
+                      color={item.ok ? C.green : C.amber}
+                      style={{
+                        flexGrow: 1,
+                        flexBasis: 0,
+                        minWidth: 0,
+                        whiteSpace: "nowrap",
+                        textOverflow: "ellipsis",
+                        textAlign: "right",
+                      }}
+                    >
                       {item.detail}
                     </Text>
                   </div>
@@ -875,7 +986,7 @@ export function App({
               </div>
             </div>
             <div style={panel}>
-              <Text size={19}>应用更新</Text>
+              <Text size={12}>应用更新</Text>
               <Text color={C.muted} size={12}>
                 当前版本 {state.hello?.version ?? "…"}
               </Text>
@@ -935,9 +1046,10 @@ export function App({
       <div
         style={{
           ...row,
-          paddingLeft: 20,
-          paddingRight: 20,
-          height: 32,
+          paddingLeft: 12,
+          paddingRight: 12,
+          height: 24,
+          backgroundColor: C.panel,
           flexShrink: 0,
           borderTopWidth: 1,
           borderColor: C.border,
@@ -969,7 +1081,7 @@ export function App({
         title={confirm?.title ?? ""}
         testId="confirm-dialog"
       >
-        <Text size={14} color={C.muted}>
+        <Text size={12} color={C.muted}>
           {confirm?.message}
         </Text>
         <div style={{ ...row, justifyContent: "flex-end" }}>
@@ -994,9 +1106,9 @@ export function App({
         style={{
           ...column,
           position: "absolute",
-          bottom: 48,
-          right: 16,
-          width: Math.min(370, size.width - 32),
+          bottom: 34,
+          right: 10,
+          width: Math.min(330, size.width - 20),
           gap: 8,
           pointerEvents: "none",
         }}
@@ -1019,7 +1131,7 @@ export function App({
             >
               <div style={row}>
                 <div style={{ flexGrow: 1, minWidth: 0 }}>
-                  <Text size={13} color={notice.error ? C.red : C.text}>
+                  <Text size={11} color={notice.error ? C.red : C.text}>
                     {notice.message}
                   </Text>
                 </div>

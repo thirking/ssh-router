@@ -2,7 +2,7 @@
 
 ## 自动验证
 
-macOS arm64 上的 Rust 工作区测试、前端类型与状态测试、独立程序构建、1020×760 和 640×520 原生交互验证均通过。Windows MSVC 目标的 Rust 构建及工作区 Clippy 检查通过；Windows 桌面与安装包实测仍待验收。
+macOS arm64 上的 Rust 工作区测试、前端类型与状态测试、独立程序构建、620×760 和 520×440 原生交互验证均通过。Windows MSVC 目标的 Rust 构建及工作区 Clippy 检查通过；当前界面的 Windows 桌面实测仍待验收。
 
 - `cargo test --workspace`：共享核心、CLI、更新工具和管道协议。
 - `cargo clippy -p ssh-router-gpuix --all-targets -- -D warnings`：新增 Rust 代码。
@@ -19,7 +19,7 @@ macOS arm64 上的 Rust 工作区测试、前端类型与状态测试、独立�
 - [ ] 重启 Explorer 后托盘恢复。
 - [ ] Tab、Shift+Tab、Enter、Space、Escape、Ctrl+S、Ctrl+N、Ctrl+F 正常，弹窗焦点不逸出。
 - [ ] 中文 IME 完成组合、选词和提交，不重复、不丢字。
-- [ ] 640×520 窗口和高 DPI 下表单、底部按钮与列表可滚动访问。
+- [ ] 520×440 窗口和高 DPI 下表单、底部按钮与列表可滚动访问。
 - [ ] CLI 部署、DefaultShell、重启 sshd 的成功、取消、失败及重试状态正确。
 - [ ] 运行 NSIS 全新安装与覆盖安装，GUI、后端、CLI、Node-API 模块均存在；配置保持兼容。
 - [ ] 手动及自动更新、网络失败、签名失败、安装替换与重启正常。
