@@ -10,11 +10,8 @@ import {
 import { ProcessBackend, resourcePath } from "./backend";
 import { AppModel } from "./model";
 import { App } from "./ui";
+import type { Desktop } from "./desktop";
 
-interface Desktop {
-  acquireInstance(name?: string): boolean;
-  attachWindow(): boolean;
-}
 let desktop: Desktop | null = null;
 if (process.platform === "win32") {
   const installed = resourcePath("ssh-router-desktop.node");
@@ -34,6 +31,7 @@ renderer.init({
   title: "SSH Router",
   appName: "SSH Router",
   appId: "sshrouter.SSHRouter",
+  titlebarTransparent: process.platform === "win32",
   width: Number(process.env.SSH_ROUTER_WIDTH) || 620,
   height: Number(process.env.SSH_ROUTER_HEIGHT) || 760,
   minWidth: 520,
@@ -47,6 +45,7 @@ renderer.init({
 render(
   <App
     model={model}
+    desktop={desktop}
     onReady={() => {
       if (process.env.SSH_ROUTER_STARTUP_MARKER)
         writeFileSync(

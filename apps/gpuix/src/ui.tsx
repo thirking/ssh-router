@@ -22,6 +22,7 @@ import {
 } from "@gpuix/react";
 import { BackendError, type Config, type Route } from "./backend";
 import { AppModel, dirty, filterRoutes, routeErrors } from "./model";
+import type { Desktop } from "./desktop";
 
 const C = {
   bg: "#282C33",
@@ -125,6 +126,102 @@ function Action({
         {children}
       </Text>
     </Button>
+  );
+}
+
+function WindowTitlebar({
+  desktop,
+  blocked,
+}: {
+  desktop: Desktop;
+  blocked: boolean;
+}) {
+  const { renderer } = useGpuix();
+  const size = useWindowSize();
+  const drag = useRef<PublicInstance>(null);
+  const maximized = desktop.isWindowMaximized();
+  const updateDragRegion = () => {
+    const bounds = drag.current
+      ? renderer?.getElementBounds?.(drag.current.id)
+      : null;
+    desktop.setTitlebarRegion(blocked ? null : (bounds ?? null));
+  };
+  useEffect(() => {
+    updateDragRegion();
+    return () => desktop.setTitlebarRegion(null);
+  }, [desktop, renderer, blocked, size.width, size.height]);
+  const controls = [
+    {
+      id: "minimize",
+      label: "最小化",
+      glyph: "\uE921",
+      action: () => renderer?.minimizeWindow?.(),
+    },
+    {
+      id: "maximize",
+      label: maximized ? "还原" : "最大化",
+      glyph: maximized ? "\uE923" : "\uE922",
+      action: () => desktop.toggleMaximizeWindow(),
+    },
+    {
+      id: "close",
+      label: "关闭到托盘",
+      glyph: "\uE8BB",
+      action: () => desktop.closeWindow(),
+    },
+  ];
+  return (
+    <div
+      testId="window-titlebar"
+      style={{
+        ...row,
+        gap: 0,
+        height: 32,
+        flexShrink: 0,
+        backgroundColor: C.title,
+        borderBottomWidth: 1,
+        borderColor: C.divider,
+      }}
+    >
+      <div
+        ref={drag}
+        testId="window-drag-region"
+        onLayout={updateDragRegion}
+        style={{ ...row, height: "100%", flexGrow: 1, paddingLeft: 12 }}
+      >
+        <Text size={11} color={C.muted}>
+          SSH Router
+        </Text>
+      </div>
+      {controls.map((control) => (
+        <Button
+          key={control.id}
+          testId={`window-${control.id}`}
+          aria-label={control.label}
+          onClick={control.action}
+          style={{
+            ...row,
+            justifyContent: "center",
+            width: 40,
+            height: "100%",
+            flexShrink: 0,
+            hover: {
+              backgroundColor: control.id === "close" ? "#C42B3B" : C.border,
+            },
+            active: { opacity: 0.65 },
+            focusVisible: {
+              outlineWidth: 1,
+              outlineColor: C.accent,
+              outlineOffset: -2,
+            },
+          }}
+        >
+          <Text size={10} style={{ fontFamily: "Segoe MDL2 Assets" }}>
+            {control.glyph}
+          </Text>
+        </Button>
+      ))}
+    </div>
   );
 }
 
@@ -421,9 +518,11 @@ type Confirmation = {
 export function App({
   model,
   onReady,
+  desktop,
 }: {
   model: AppModel;
   onReady?: () => void;
+  desktop?: Desktop | null;
 }) {
   const state = useSyncExternalStore(model.subscribe, model.getSnapshot);
   const [query, setQuery] = useState("");
@@ -531,6 +630,9 @@ export function App({
           process.platform === "win32" ? "Segoe UI" : "Helvetica Neue",
       }}
     >
+      {desktop && (
+        <WindowTitlebar desktop={desktop} blocked={!!editor || !!confirm} />
+      )}
       <div
         style={{
           ...row,
@@ -543,9 +645,11 @@ export function App({
           borderColor: C.divider,
         }}
       >
-        <Text size={13} style={{ fontWeight: 600 }}>
-          SSH Router
-        </Text>
+        {!desktop && (
+          <Text size={13} style={{ fontWeight: 600 }}>
+            SSH Router
+          </Text>
+        )}
         <div style={{ flexGrow: 1 }} />
         <Text size={10} color={changed ? C.amber : C.muted}>
           {changed ? "● 未保存" : config ? "已保存" : "加载中"}
@@ -686,6 +790,7 @@ export function App({
                 style={{
                   ...column,
                   gap: 0,
+                  flexShrink: 0,
                   borderWidth: 1,
                   borderColor: C.divider,
                   borderRadius: 3,
