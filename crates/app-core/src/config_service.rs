@@ -150,7 +150,8 @@ $staged = Join-Path $dstDir ('.ssh-router-' + [Guid]::NewGuid().ToString('N') + 
 try {{
     Copy-Item -LiteralPath $src -Destination $staged -Force
     if (Test-Path -LiteralPath $dst) {{
-        [System.IO.File]::Replace($staged, $dst, $null, $true)
+        # NullString 保留 .NET null，避免备份路径被转换为空字符串。
+        [System.IO.File]::Replace($staged, $dst, [NullString]::Value, $true)
     }} else {{
         [System.IO.File]::Move($staged, $dst)
     }}
@@ -247,6 +248,45 @@ mod tests {
             }
             Ok("ok".to_string())
         }
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn elevated_save_replaces_existing_config_under_windows_powershell() {
+        let directory = tempfile::tempdir().expect("测试目录应可创建");
+        let target_directory = directory.path().join("configuration 包's");
+        std::fs::create_dir_all(&target_directory).unwrap();
+        let source = directory.path().join("source.json");
+        let destination = target_directory.join("ssh-router.json");
+        std::fs::write(&source, br#"{"value":"new"}"#).unwrap();
+        std::fs::write(&destination, br#"{"value":"old"}"#).unwrap();
+        let script = elevated_copy_script(&source, &destination).unwrap();
+        let wrapper = format!(
+            "$ErrorActionPreference = 'Stop'\n[Console]::OutputEncoding = [Text.Encoding]::UTF8\ntry {{\n{script}\n}} catch {{ [Console]::Error.WriteLine($_.Exception.Message); exit 1 }}\n"
+        );
+        let path = directory.path().join("save.ps1");
+        std::fs::write(&path, format!("\u{feff}{wrapper}")).unwrap();
+        let output = std::process::Command::new("powershell.exe")
+            .args([
+                "-NoProfile",
+                "-NonInteractive",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-File",
+            ])
+            .arg(path)
+            .output()
+            .expect("Windows PowerShell 应可启动");
+        assert!(
+            output.status.success(),
+            "配置替换失败: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(
+            std::fs::read(&destination).unwrap(),
+            std::fs::read(&source).unwrap()
+        );
+        assert_eq!(std::fs::read_dir(&target_directory).unwrap().count(), 1);
     }
 
     #[test]

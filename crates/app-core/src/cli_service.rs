@@ -97,7 +97,8 @@ $operationError = $null
 try {{
     Copy-Item -LiteralPath $src -Destination $staged -Force
     if (Test-Path -LiteralPath $dst) {{
-        [System.IO.File]::Replace($staged, $dst, $null, $true)
+        # NullString 保留 .NET null，避免备份路径被转换为空字符串。
+        [System.IO.File]::Replace($staged, $dst, [NullString]::Value, $true)
     }} else {{
         [System.IO.File]::Move($staged, $dst)
     }}
@@ -246,5 +247,43 @@ mod tests {
         assert!(script.contains("[System.IO.File]::Replace"));
         assert!(script.contains("$LASTEXITCODE"));
         assert!(!script.contains("SilentlyContinue"));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn install_script_replaces_existing_cli_under_windows_powershell() {
+        let directory = tempfile::tempdir().expect("测试目录应可创建");
+        let bundled_directory = directory.path().join("bundled 包's");
+        let deployed_directory = directory.path().join("deployed 包's");
+        fs::create_dir_all(&bundled_directory).unwrap();
+        fs::create_dir_all(&deployed_directory).unwrap();
+        let source = bundled_directory.join("ssh-router-cli.exe");
+        let destination = deployed_directory.join("ssh-router-cli.exe");
+        fs::write(&source, b"new cli").unwrap();
+        fs::write(&destination, b"old cli").unwrap();
+        let script = install_cli_script(&source, &destination).unwrap();
+        let wrapper = format!(
+            "$ErrorActionPreference = 'Stop'\n[Console]::OutputEncoding = [Text.Encoding]::UTF8\ntry {{\n{script}\n}} catch {{ [Console]::Error.WriteLine($_.Exception.Message); exit 1 }}\n"
+        );
+        let path = directory.path().join("install.ps1");
+        fs::write(&path, format!("\u{feff}{wrapper}")).unwrap();
+        let output = std::process::Command::new("powershell.exe")
+            .args([
+                "-NoProfile",
+                "-NonInteractive",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-File",
+            ])
+            .arg(path)
+            .output()
+            .expect("Windows PowerShell 应可启动");
+        assert!(
+            output.status.success(),
+            "CLI 替换失败: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(fs::read(&destination).unwrap(), b"new cli");
+        assert_eq!(fs::read_dir(&deployed_directory).unwrap().count(), 1);
     }
 }
