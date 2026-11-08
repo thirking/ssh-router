@@ -59,7 +59,14 @@ pub fn toggle_maximize_window() -> napi::Result<()> {
 
 #[napi]
 pub fn close_window() -> napi::Result<()> {
-    post_window_message(WM_CLOSE, 0)
+    let handle = WINDOW.load(Ordering::Acquire);
+    if handle == 0 {
+        return Err(napi::Error::from_reason("窗口尚未就绪"));
+    }
+    unsafe {
+        let _ = ShowWindow(HWND(handle as _), SW_HIDE);
+    }
+    Ok(())
 }
 
 fn post_window_message(message: u32, command: usize) -> napi::Result<()> {

@@ -16,13 +16,14 @@ import {
   motion,
   useGpuix,
   useWindowSize,
+  type EventPayload,
   type KeyEvent,
   type PublicInstance,
   type StyleDesc,
 } from "@gpuix/react";
 import { BackendError, type Config, type Route } from "./backend";
 import { AppModel, dirty, filterRoutes, routeErrors } from "./model";
-import type { Desktop } from "./desktop";
+import type { Desktop, TitlebarRegion } from "./desktop";
 
 const C = {
   bg: "#282C33",
@@ -137,19 +138,23 @@ function WindowTitlebar({
   blocked: boolean;
 }) {
   const { renderer } = useGpuix();
-  const size = useWindowSize();
-  const drag = useRef<PublicInstance>(null);
+  const dragRegion = useRef<TitlebarRegion | null>(null);
   const maximized = desktop.isWindowMaximized();
-  const updateDragRegion = () => {
-    const bounds = drag.current
-      ? renderer?.getElementBounds?.(drag.current.id)
-      : null;
-    desktop.setTitlebarRegion(blocked ? null : (bounds ?? null));
+  const updateDragRegion = ({ x, y, width, height }: EventPayload) => {
+    if (
+      x === undefined ||
+      y === undefined ||
+      width === undefined ||
+      height === undefined
+    )
+      return;
+    dragRegion.current = { x, y, width, height };
+    desktop.setTitlebarRegion(blocked ? null : dragRegion.current);
   };
   useEffect(() => {
-    updateDragRegion();
+    desktop.setTitlebarRegion(blocked ? null : dragRegion.current);
     return () => desktop.setTitlebarRegion(null);
-  }, [desktop, renderer, blocked, size.width, size.height]);
+  }, [desktop, blocked]);
   const controls = [
     {
       id: "minimize",
@@ -184,7 +189,6 @@ function WindowTitlebar({
       }}
     >
       <div
-        ref={drag}
         testId="window-drag-region"
         onLayout={updateDragRegion}
         style={{ ...row, height: "100%", flexGrow: 1, paddingLeft: 12 }}

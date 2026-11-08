@@ -26,6 +26,10 @@ if (process.platform === "win32") {
 const backend = new ProcessBackend();
 const model = new AppModel(backend);
 process.on("exit", () => model.close());
+const showOnStart =
+  !desktop ||
+  process.env.SSH_ROUTER_SHOW === "1" ||
+  !!process.env.SSH_ROUTER_STARTUP_MARKER;
 const renderer = createRenderer();
 renderer.init({
   title: "SSH Router",
@@ -36,11 +40,9 @@ renderer.init({
   height: Number(process.env.SSH_ROUTER_HEIGHT) || 760,
   minWidth: 520,
   minHeight: 440,
-  show:
-    !desktop ||
-    process.env.SSH_ROUTER_SHOW === "1" ||
-    !!process.env.SSH_ROUTER_STARTUP_MARKER,
-  focus: process.env.GPUIX_BACKGROUND !== "1",
+  // Windows 先完成原生窗口初始化，托盘就绪后再隐藏。
+  show: true,
+  focus: showOnStart && process.env.GPUIX_BACKGROUND !== "1",
 });
 render(
   <App
@@ -64,6 +66,7 @@ if (desktop) {
   const timer = setInterval(() => {
     try {
       if (desktop!.attachWindow()) {
+        if (!showOnStart) desktop!.closeWindow();
         clearInterval(timer);
         return;
       }
